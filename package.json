@@ -1,0 +1,65 @@
+{
+  "name": "csc-center-billing-software",
+  "version": "0.1.0",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate",
+    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "npm run build && electron-builder build --mac --win"
+  },
+  "build": {
+    "appId": "com.csc.billing",
+    "productName": "CSC Billing",
+    "asar": false,
+    "directories": {
+      "output": "dist_electron"
+    },
+    "files": [
+      ".next/**/*",
+      "node_modules/**/*",
+      "electron/**/*",
+      "package.json",
+      "public/**/*",
+      "prisma/**/*"
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "dependencies": {
+    "@prisma/client": "^5.13.0",
+    "@types/recharts": "^1.8.29",
+    "date-fns": "^4.1.0",
+    "electron-updater": "^6.8.3",
+    "next": "^16.1.7",
+    "pdf-lib": "^1.17.1",
+    "react": "^18",
+    "react-dom": "^18",
+    "recharts": "^3.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/uuid": "^10.0.0",
+    "concurrently": "^9.2.1",
+    "electron": "^41.0.3",
+    "electron-builder": "^26.8.1",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.3",
+    "prisma": "^5.13.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5",
+    "uuid": "^13.0.0",
+    "wait-on": "^9.0.4"
+  }
+}
