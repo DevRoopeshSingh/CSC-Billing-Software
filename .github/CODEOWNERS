@@ -1,0 +1,29 @@
+# Code owners for CSC Billing Software
+# Auto-request reviews from these users for changes to matching files
+
+# Default: all files
+*                                    @DevRoopeshSingh
+
+# API endpoints
+src/app/api/**                       @DevRoopeshSingh
+
+# React components
+src/components/**                    @DevRoopeshSingh
+src/app/**                          @DevRoopeshSingh
+
+# Database schema and migrations
+prisma/**                           @DevRoopeshSingh
+
+# Electron configuration
+electron/**                         @DevRoopeshSingh
+
+# Configuration files
+tsconfig.json                       @DevRoopeshSingh
+next.config.js                     @DevRoopeshSingh
+.eslintrc.json                     @DevRoopeshSingh
+
+# Workflows
+.github/workflows/**               @DevRoopeshSingh
+
+# Documentation
+*.md                              @DevRoopeshSingh
