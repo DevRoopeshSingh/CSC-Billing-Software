@@ -3,18 +3,18 @@
 import React, { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { format } from "date-fns";
+import { useCommandPalette } from "./CommandPaletteProvider";
 
 export default function Topbar() {
   const pathname = usePathname();
   const [currentTime, setCurrentTime] = useState("");
+  const { open } = useCommandPalette();
 
   useEffect(() => {
     const updateTime = () => setCurrentTime(format(new Date(), "EEEE, MMM d, yyyy"));
     updateTime();
-    // No need to update every second since we just show the date, but fine to run once
   }, []);
 
-  // Map routes to human readable titles
   const getPageTitle = (path: string) => {
     if (path === "/") return "Overview";
     if (path.startsWith("/billing/new")) return "Create Invoice";
@@ -24,6 +24,8 @@ export default function Topbar() {
     if (path.startsWith("/reports")) return "Reports";
     if (path.startsWith("/center")) return "Center Setup";
     if (path.startsWith("/settings")) return "Settings";
+    if (path.startsWith("/faq")) return "FAQ Manager";
+    if (path.startsWith("/leads")) return "Leads";
     return "CSC Billing";
   };
 
@@ -39,31 +41,25 @@ export default function Topbar() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-        {/* Global Search (Placeholder) */}
-        <div style={{ position: "relative" }}>
+        {/* Cmd+K Search Trigger */}
+        <button
+          onClick={open}
+          className="cmd-k-trigger"
+          title="Search (⌘K)"
+        >
           <svg
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             strokeWidth={2}
-            style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", width: "16px", height: "16px", color: "var(--text-muted)" }}
+            style={{ width: "15px", height: "15px", color: "var(--text-muted)" }}
           >
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input
-            type="text"
-            placeholder="Search..."
-            style={{
-              padding: "8px 16px 8px 36px",
-              borderRadius: "20px",
-              border: "1px solid var(--border)",
-              background: "var(--bg)",
-              fontSize: "13px",
-              width: "220px"
-            }}
-          />
-        </div>
+          <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>Search…</span>
+          <kbd className="cmd-k-badge">⌘K</kbd>
+        </button>
 
         {/* Notifications */}
         <button
@@ -84,8 +80,8 @@ export default function Topbar() {
           onMouseOut={(e) => (e.currentTarget.style.background = "none")}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: "20px", height: "20px" }}>
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
         </button>
 
@@ -116,3 +112,4 @@ export default function Topbar() {
     </header>
   );
 }
+

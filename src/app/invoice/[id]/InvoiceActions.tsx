@@ -1,14 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import PrintButton from "@/components/print/PrintButton";
+import WhatsAppShare from "@/components/invoice/WhatsAppShare";
 
 export default function InvoiceActions({
   invoice,
   centerName,
+  centerAddress,
+  centerPhone,
+  upiId,
   currentTemplate,
 }: {
   invoice: any;
   centerName: string;
+  centerAddress?: string;
+  centerPhone?: string;
+  upiId?: string;
   currentTemplate: string;
 }) {
   const router = useRouter();
@@ -25,27 +33,20 @@ export default function InvoiceActions({
     router.refresh();
   };
 
-  const handleWhatsApp = () => {
-    let mobile = invoice.customer.mobile;
-    if (!mobile) {
-      alert("Customer has no mobile number registered.");
-      return;
-    }
-    // Remove formatting and ensure country code
-    mobile = mobile.replace(/\D/g, "");
-    if (mobile.length === 10) mobile = "91" + mobile;
-
-    const message = `Hello ${invoice.customer.name}, your bill ${invoice.invoiceNo} of Rs.${invoice.total} is ready. Visit ${centerName}. Thank you!`;
-    window.open(`https://wa.me/${mobile}?text=${encodeURIComponent(message)}`, "_blank");
-  };
-
   const toggleTemplate = (t: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set("template", t);
-    // Remove auto-print search param from UI toggle to avoid looping print dialogs
     url.searchParams.delete("print");
     router.push(url.pathname + url.search);
   };
+
+  // Build UPI link if center has UPI ID configured
+  let upiLink: string | undefined;
+  if (upiId && invoice.total > 0) {
+    const tn = encodeURIComponent(`Invoice ${invoice.invoiceNo}`);
+    const pn = encodeURIComponent(centerName);
+    upiLink = `upi://pay?pa=${upiId}&pn=${pn}&am=${invoice.total.toFixed(2)}&tn=${tn}&cu=INR`;
+  }
 
   return (
     <div className="no-print" style={{
@@ -57,7 +58,7 @@ export default function InvoiceActions({
       <a href="/" style={{ color: "rgba(255,255,255,.7)", textDecoration: "none", fontSize: 14 }}>
         ← Back to Dashboard
       </a>
-      <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         {invoice.status === "PENDING" && (
           <a
             href={`/invoice/${invoice.id}/edit`}
@@ -94,15 +95,19 @@ export default function InvoiceActions({
           </button>
         )}
 
-        <button
-          onClick={handleWhatsApp}
-          style={{
-            padding: "7px 16px", background: "#25D366", color: "#fff",
-            border: "none", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer"
-          }}
-        >
-          💬 WhatsApp
-        </button>
+        <WhatsAppShare
+          invoice={invoice}
+          centerName={centerName}
+          upiLink={upiLink}
+        />
+
+        {/* Thermal Print */}
+        <PrintButton
+          invoice={invoice}
+          centerName={centerName}
+          centerAddress={centerAddress}
+          centerPhone={centerPhone}
+        />
 
         <a href="/billing/new" style={{
           padding: "7px 16px", background: "#3b82f6", color: "#fff",

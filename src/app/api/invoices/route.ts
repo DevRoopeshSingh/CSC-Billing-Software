@@ -54,8 +54,9 @@ export async function POST(request: Request) {
         data: { invoiceNumber: { increment: 1 } },
       });
 
-      // 2. Format the human-readable invoice string e.g., "INV-0005"
-      const invoiceNo = `${center.invoicePrefix}${String(center.invoiceNumber).padStart(4, "0")}`;
+      // 2. Format the human-readable invoice string e.g., "INV-2026-00042"
+      const year = new Date().getFullYear();
+      const invoiceNo = `${center.invoicePrefix}${year}-${String(center.invoiceNumber).padStart(5, '0')}`;
 
       // 3. Create the invoice
       const inv = await tx.invoice.create({

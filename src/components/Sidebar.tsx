@@ -151,7 +151,6 @@ export default function Sidebar() {
   const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    // navigator.onLine is available in the browser window
     if (typeof window !== "undefined") {
       setIsOnline(navigator.onLine);
       const handleOnline = () => setIsOnline(true);
@@ -166,19 +165,37 @@ export default function Sidebar() {
     }
   }, []);
 
-  // Onboarding wizard has its own full-screen layout
   if (pathname === "/wizard") return null;
 
-  const links = [
+  const mainLinks = [
     { href: "/", label: "Dashboard", Icon: IconGrid },
     { href: "/billing/new", label: "New Bill", Icon: IconPlus },
     { href: "/invoices", label: "Invoices", Icon: IconFileText },
     { href: "/reports", label: "Reports", Icon: IconFileText },
     { href: "/customers", label: "Customers", Icon: IconUsers },
     { href: "/services", label: "Services", Icon: IconList },
+  ];
+
+  const agentLinks = [
+    { href: "/leads", label: "Leads", Icon: IconUsers },
+    { href: "/faq", label: "FAQ Manager", Icon: IconList },
+  ];
+
+  const manageLinks = [
     { href: "/center", label: "Center Setup", Icon: IconSettings },
     { href: "/settings", label: "Settings & Backup", Icon: IconSettings },
   ];
+
+  const renderLinks = (links: typeof mainLinks) =>
+    links.map(({ href, label, Icon }) => {
+      const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+      return (
+        <Link key={href} href={href} className={`nav-link${active ? " active" : ""}`}>
+          <Icon />
+          {label}
+        </Link>
+      );
+    });
 
   return (
     <aside className="sidebar" style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -188,17 +205,47 @@ export default function Sidebar() {
       </div>
       <nav className="sidebar-nav" style={{ flex: 1 }}>
         <p className="nav-label">Navigation</p>
-        {links.map(({ href, label, Icon }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-          return (
-            <Link key={href} href={href} className={`nav-link${active ? " active" : ""}`}>
-              <Icon />
-              {label}
-            </Link>
-          );
-        })}
+        {renderLinks(mainLinks)}
+
+        <p className="nav-label" style={{ marginTop: 20 }}>Agent & CRM</p>
+        {renderLinks(agentLinks)}
+
+        <p className="nav-label" style={{ marginTop: 20 }}>Manage</p>
+        {renderLinks(manageLinks)}
       </nav>
-      <div style={{ padding: "20px", fontSize: "14px", display: "flex", alignItems: "center", gap: "8px", borderTop: "1px solid #374151" }}>
+
+      {/* Co-Pilot Toggle */}
+      <div style={{ padding: "12px 20px", borderTop: "1px solid #374151" }}>
+        <button
+          onClick={() => {
+            // Dispatch a custom event that CoPilotDrawer listens to
+            window.dispatchEvent(new CustomEvent("toggle-copilot"));
+          }}
+          style={{
+            width: "100%",
+            padding: "10px 14px",
+            background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 8,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            justifyContent: "center",
+            transition: "opacity 0.2s",
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.opacity = "0.9")}
+          onMouseOut={(e) => (e.currentTarget.style.opacity = "1")}
+        >
+          🤖 Co-Pilot
+          <kbd style={{ background: "rgba(255,255,255,0.2)", padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 400 }}>⌘J</kbd>
+        </button>
+      </div>
+
+      <div style={{ padding: "12px 20px", fontSize: "14px", display: "flex", alignItems: "center", gap: "8px", borderTop: "1px solid #374151" }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: isOnline ? "#10b981" : "#ef4444" }} />
         <span style={{ color: isOnline ? "#9ca3af" : "#ef4444", fontWeight: isOnline ? 400 : 600 }}>
           {isOnline ? "Online" : "Offline Mode"}
@@ -207,3 +254,4 @@ export default function Sidebar() {
     </aside>
   );
 }
+

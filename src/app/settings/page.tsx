@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { CenterProfile } from "@/types";
+import PrinterSettings from "@/components/settings/PrinterSettings";
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<Partial<CenterProfile>>({});
@@ -90,9 +91,14 @@ export default function SettingsPage() {
     <div style={{ maxWidth: 800 }}>
       <div className="page-header">
         <h2>App Settings</h2>
-        <a href="/settings/backup" className="btn btn-ghost" style={{ textDecoration: "none" }}>
-          💾 Backup & Restore
-        </a>
+        <div style={{ display: "flex", gap: 8 }}>
+          <a href="/settings/templates" className="btn btn-ghost" style={{ textDecoration: "none" }}>
+            Message Templates
+          </a>
+          <a href="/settings/backup" className="btn btn-ghost" style={{ textDecoration: "none" }}>
+            Backup & Restore
+          </a>
+        </div>
       </div>
 
       {status.message && (
@@ -212,6 +218,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Printer Settings */}
+      <PrinterSettings />
     </div>
   );
 }

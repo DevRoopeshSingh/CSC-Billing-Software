@@ -226,6 +226,22 @@ export default function CenterPage() {
                 </span>
               )}
             </div>
+
+            {/* UPI ID (VPA) */}
+            <div className="form-group full">
+              <label htmlFor="upiId">UPI ID (VPA)</label>
+              <input
+                id="upiId"
+                name="upiId"
+                type="text"
+                value={(form as any).upiId ?? ""}
+                onChange={(e) => setForm((p) => ({ ...p, upiId: e.target.value }))}
+                placeholder="yourname@upi or 9876543210@paytm"
+              />
+              <span className="text-muted" style={{ fontSize: 12, marginTop: 4, display: "block" }}>
+                Used for UPI deep links in WhatsApp invoice shares. Leave blank if not needed.
+              </span>
+            </div>
           </div>
         </div>
 
@@ -234,7 +250,7 @@ export default function CenterPage() {
             Invoice Configuration
           </h3>
           <p className="text-muted" style={{ marginBottom: 16, fontSize: 14 }}>
-            Control the numbering of your next bill. The final invoice number will look like <strong>{form.invoicePrefix || "INV-"}{String((form.invoiceNumber || 0) + 1).padStart(4, "0")}</strong>.
+            Control the numbering of your next bill. The final invoice number will look like <strong>{form.invoicePrefix || "INV-"}{new Date().getFullYear()}-{String((form.invoiceNumber || 0) + 1).padStart(5, "0")}</strong>.
           </p>
           <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="form-group">

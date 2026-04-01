@@ -15,7 +15,17 @@ async function ensureProfile() {
 export async function GET() {
   const profile = await ensureProfile();
   const { pinHash, ...safeProfile } = profile as any;
-  return NextResponse.json({ ...safeProfile, hasPin: !!pinHash });
+  let operatingHours = null;
+  try {
+    if (safeProfile.operatingHours) {
+      operatingHours = JSON.parse(safeProfile.operatingHours);
+    }
+  } catch { /* invalid JSON, return null */ }
+  return NextResponse.json({
+    ...safeProfile,
+    hasPin: !!pinHash,
+    operatingHours,
+  });
 }
 
 export async function PUT(request: Request) {
@@ -37,6 +47,13 @@ export async function PUT(request: Request) {
   if (body.theme !== undefined) arg.theme = body.theme;
   if (body.defaultTaxRate !== undefined) arg.defaultTaxRate = Number(body.defaultTaxRate);
   if (body.defaultPaymentMode !== undefined) arg.defaultPaymentMode = body.defaultPaymentMode;
+  if (body.upiId !== undefined) arg.upiId = body.upiId;
+  if (body.operatingHours !== undefined) {
+    arg.operatingHours = typeof body.operatingHours === 'string'
+      ? body.operatingHours
+      : JSON.stringify(body.operatingHours);
+  }
+  if (body.centerDescription !== undefined) arg.centerDescription = body.centerDescription;
 
   const updated = await prisma.centerProfile.update({
     where: { id: 1 },

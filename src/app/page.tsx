@@ -94,9 +94,9 @@ export default async function HomePage() {
           <Link href="/reports" className="btn btn-ghost">
             📊 Reports
           </Link>
-          <button onClick={() => window.open("/api/export/csv", "_blank")} className="btn btn-ghost">
+          <a href="/api/export/csv" target="_blank" rel="noopener noreferrer" className="btn btn-ghost">
             ⬇ Export CSV
-          </button>
+          </a>
           <Link href="/billing/new" className="btn btn-primary">
             + New Bill
           </Link>

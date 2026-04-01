@@ -26,5 +26,6 @@ export function formatDate(date: string | Date): string {
  * Generate a display invoice number like INV-0001
  */
 export function formatInvoiceNumber(id: number): string {
-  return `INV-${String(id).padStart(4, "0")}`;
+  const year = new Date().getFullYear();
+  return `INV-${year}-${String(id).padStart(5, "0")}`;
 }

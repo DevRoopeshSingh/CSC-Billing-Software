@@ -39,6 +39,9 @@ export default async function InvoicePage(props: {
       <InvoiceActions 
         invoice={invoice} 
         centerName={center.centerName || "CSC Center"} 
+        centerAddress={center.address || ""}
+        centerPhone={center.mobile || ""}
+        upiId={center.upiId || undefined}
         currentTemplate={template}
       />
 

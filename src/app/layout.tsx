@@ -6,6 +6,10 @@ import OfflineToast from "@/components/OfflineToast";
 import PinLock from "@/components/PinLock";
 import GlobalShortcuts from "@/components/GlobalShortcuts";
 import { ToastProvider } from "@/components/ToastProvider";
+import { CommandPaletteProvider } from "@/components/CommandPaletteProvider";
+import { CoPilotProvider } from "@/components/CoPilotContext";
+import CommandPalette from "@/components/CommandPalette";
+import CoPilotDrawer from "@/components/CoPilotDrawer";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
@@ -30,23 +34,30 @@ export default async function RootLayout({
     <html lang="en">
       <body>
         <ToastProvider>
-          <PinLock pinEnabled={hasPin}>
-            <div className="app-shell">
-              <Sidebar />
-              <div className="main-wrapper">
-                <Topbar />
-                <main className="main-content">
-                  <div className="content-container">
-                    {children}
+          <CommandPaletteProvider>
+            <CoPilotProvider>
+              <PinLock pinEnabled={hasPin}>
+                <div className="app-shell">
+                  <Sidebar />
+                  <div className="main-wrapper">
+                    <Topbar />
+                    <main className="main-content">
+                      <div className="content-container">
+                        {children}
+                      </div>
+                    </main>
                   </div>
-                </main>
-              </div>
-            </div>
-            <OfflineToast />
-            <GlobalShortcuts />
-          </PinLock>
+                </div>
+                <OfflineToast />
+                <GlobalShortcuts />
+                <CommandPalette />
+                <CoPilotDrawer />
+              </PinLock>
+            </CoPilotProvider>
+          </CommandPaletteProvider>
         </ToastProvider>
       </body>
     </html>
   );
 }
+

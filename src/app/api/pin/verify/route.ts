@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import crypto from "crypto";
+import { verifyPin } from "@/lib/pin";
 
 export async function POST(request: Request) {
   try {
@@ -13,14 +13,12 @@ export async function POST(request: Request) {
     const profile = await prisma.centerProfile.findUnique({ where: { id: 1 } });
     
     if (!profile || !profile.pinHash) {
-       // If no pin is set, treat as invalid or auto-allow depending on architecture.
-       // We'll return invalid because if they're asking, something is misconfigured.
        return NextResponse.json({ valid: false, error: "No PIN configured" }, { status: 400 });
     }
 
-    const hashedInput = crypto.createHash("sha256").update(pin).digest("hex");
+    const isValid = await verifyPin(pin, profile.pinHash);
     
-    if (hashedInput === profile.pinHash) {
+    if (isValid) {
       return NextResponse.json({ valid: true });
     } else {
       return NextResponse.json({ valid: false });

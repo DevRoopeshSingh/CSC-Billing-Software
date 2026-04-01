@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Service, Customer, LineItemInput } from "@/types";
 
@@ -18,7 +18,7 @@ const newRow = (): LineItemRow => ({
   taxRate: 0,
 });
 
-export default function NewBillPage() {
+function NewBillPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -493,5 +493,13 @@ export default function NewBillPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function NewBillPage() {
+  return (
+    <Suspense>
+      <NewBillPageInner />
+    </Suspense>
   );
 }

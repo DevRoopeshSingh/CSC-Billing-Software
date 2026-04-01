@@ -257,7 +257,7 @@ export default function WizardPage() {
                         boxSizing: "border-box", transition: "border-color 0.2s"
                       }}
                     />
-                    <span style={{ fontSize: "13px", color: "#6b7280" }}>Leave blank if you don't have Udyam registration.</span>
+                    <span style={{ fontSize: "13px", color: "#6b7280" }}>Leave blank if you don&apos;t have Udyam registration.</span>
                   </div>
 
                 </div>

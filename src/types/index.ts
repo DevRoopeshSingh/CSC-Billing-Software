@@ -8,6 +8,7 @@ export interface CenterProfile {
   udyamNumber: string | null;
   logoPath: string | null;
   upiQrPath: string | null;
+  upiId: string | null;
   invoicePrefix: string;
   invoiceNumber: number;
   theme: string;
@@ -15,6 +16,8 @@ export interface CenterProfile {
   defaultPaymentMode: string;
   lastBackupDate: string | Date | null;
   hasPin?: boolean;
+  operatingHours: Record<string, string> | null;
+  centerDescription: string;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -25,6 +28,7 @@ export interface Service {
   defaultPrice: number;
   taxRate: number;
   isActive: boolean;
+  keywords: string;
 }
 
 // ─── Customer ─────────────────────────────────────────────────────────────────
@@ -33,6 +37,9 @@ export interface Customer {
   name: string;
   mobile: string;
   remarks: string | null;
+  email: string;
+  address: string;
+  tags: string;
 }
 
 // ─── Invoice (summary) ────────────────────────────────────────────────────────
@@ -48,6 +55,7 @@ export interface Invoice {
   paymentMode: string;
   notes: string | null;
   customerNotes: string | null;
+  printedAt: string | Date | null;
   status: string; // "PAID" | "PENDING" | "CANCELLED"
   items: InvoiceItem[];
   customer?: Customer;
@@ -91,3 +99,67 @@ export interface CreateInvoiceRequest {
   notes?: string;
   customerNotes?: string;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AGENT-READY TYPES (Phase 1)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── FAQ Entry ────────────────────────────────────────────────────────────────
+export interface FaqEntry {
+  id: number;
+  question: string;
+  answer: string;
+  category: string;
+  tags: string;
+  isPublished: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Service Checklist Item ──────────────────────────────────────────────────
+export interface ServiceChecklistItem {
+  id: number;
+  serviceId: number;
+  documentName: string;
+  isRequired: boolean;
+  notes: string;
+  sortOrder: number;
+}
+
+// ─── Lead ────────────────────────────────────────────────────────────────────
+export interface Lead {
+  id: number;
+  name: string;
+  mobile: string;
+  email: string;
+  serviceInterest: string;
+  source: string;
+  status: string; // "NEW" | "CONTACTED" | "CONVERTED" | "CLOSED"
+  notes: string | null;
+  createdAt: string;
+  convertedCustomerId: number | null;
+}
+
+// ─── Message Template ────────────────────────────────────────────────────────
+export interface MessageTemplate {
+  id: number;
+  name: string;
+  channel: string; // "whatsapp" | "sms" | "both"
+  body: string;
+  isActive: boolean;
+}
+
+// ─── Agent Log Entry ─────────────────────────────────────────────────────────
+export interface AgentLogEntry {
+  id: number;
+  agentType: string;
+  sessionId: string;
+  role: string;
+  content: string;
+  toolName: string;
+  toolInput: string;
+  durationMs: number;
+  createdAt: string;
+}
+

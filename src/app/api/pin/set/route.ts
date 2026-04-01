@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import crypto from "crypto";
+import { hashPin, verifyPin } from "@/lib/pin";
 
 export async function POST(request: Request) {
   try {
@@ -12,15 +12,15 @@ export async function POST(request: Request) {
     // Verify current PIN if one exists
     if (profile.pinHash) {
       if (!currentPin) return NextResponse.json({ error: "Current PIN required" }, { status: 400 });
-      const currentHash = crypto.createHash("sha256").update(currentPin).digest("hex");
-      if (currentHash !== profile.pinHash) {
+      const isValid = await verifyPin(currentPin, profile.pinHash);
+      if (!isValid) {
         return NextResponse.json({ error: "Incorrect current PIN" }, { status: 400 });
       }
     }
 
     if (action === "set") {
       if (!pin || pin.length !== 4) return NextResponse.json({ error: "Invalid new PIN format" }, { status: 400 });
-      const pinHash = crypto.createHash("sha256").update(pin).digest("hex");
+      const pinHash = await hashPin(pin);
       await prisma.centerProfile.update({
         where: { id: 1 },
         data: { pinHash }
