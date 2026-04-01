@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import DashboardCharts from "./DashboardCharts";
 
+export const dynamic = "force-dynamic";
+
 async function getStats() {
+  try {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -76,11 +79,25 @@ async function getStats() {
     paymentData,
     lastBackupDate: centerProfile?.lastBackupDate ?? null,
   };
+  } catch (e) {
+    console.error("Dashboard: failed to load stats", e);
+    return {
+      customerCount: 0, serviceCount: 0, invoiceCount: 0,
+      recentInvoices: [], totalRevenue: 0, todayRevenue: 0,
+      todayInvoiceCount: 0, revenueData: [], paymentData: [],
+      lastBackupDate: null,
+    };
+  }
 }
 
 export default async function HomePage() {
-  const profile = await prisma.centerProfile.findUnique({ where: { id: 1 } });
-  if (!profile || !profile.centerName) {
+  try {
+    const profile = await prisma.centerProfile.findUnique({ where: { id: 1 } });
+    if (!profile || !profile.centerName) {
+      redirect("/wizard");
+    }
+  } catch (e) {
+    // DB not accessible (Vercel build or fresh install) — redirect to wizard
     redirect("/wizard");
   }
 

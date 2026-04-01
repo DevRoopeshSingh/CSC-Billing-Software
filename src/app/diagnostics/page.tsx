@@ -2,19 +2,30 @@ import { prisma } from "@/lib/prisma";
 import { resolve } from "path";
 import fs from "fs";
 
+export const dynamic = "force-dynamic";
+
 export default async function DiagnosticsPage() {
-  const [customerCount, serviceCount, invoiceCount, profile] = await Promise.all([
-    prisma.customer.count(),
-    prisma.service.count(),
-    prisma.invoice.count(),
-    prisma.centerProfile.findUnique({ where: { id: 1 } }),
-  ]);
+  let customerCount = 0;
+  let serviceCount = 0;
+  let invoiceCount = 0;
+  let profile: any = null;
+
+  try {
+    [customerCount, serviceCount, invoiceCount, profile] = await Promise.all([
+      prisma.customer.count(),
+      prisma.service.count(),
+      prisma.invoice.count(),
+      prisma.centerProfile.findUnique({ where: { id: 1 } }),
+    ]);
+  } catch (e) {
+    console.error("Diagnostics: failed to query database", e);
+  }
 
   let dbSize = "Unknown";
   let dbLocation = "Unknown";
 
   try {
-    const dbPath = process.env.DATABASE_URL?.replace('file:', '') || './dev.db';
+    const dbPath = process.env.DATABASE_URL?.replace("file:", "") || "./dev.db";
     const absolutePath = resolve(dbPath);
     if (fs.existsSync(absolutePath)) {
       dbLocation = absolutePath;
@@ -35,7 +46,7 @@ export default async function DiagnosticsPage() {
 
       <div className="card">
         <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, borderBottom: "1px solid #e5e7eb", paddingBottom: 12 }}>Application Health</h3>
-        
+
         <table style={{ width: "100%", textAlign: "left", fontSize: 14 }}>
           <tbody>
             <tr>
