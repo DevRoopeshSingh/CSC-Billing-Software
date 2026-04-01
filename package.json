@@ -60,7 +60,7 @@
     "electron-builder": "^26.8.1",
     "eslint": "^8",
     "eslint-config-next": "14.2.3",
-    "prisma": "^5.13.0",
+    "prisma": "^7.6.0",
     "ts-node": "^10.9.2",
     "typescript": "^5",
     "uuid": "^13.0.0",
