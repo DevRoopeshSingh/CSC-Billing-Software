@@ -10,9 +10,9 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
-    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "npm run build && electron-builder build --mac --win",
-    "postinstall": "electron-rebuild -f -w node-thermal-printer"
+    "electron:dev": "npm run rebuild:electron && concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "npm run rebuild:electron && npm run build && electron-builder build --mac --win",
+    "rebuild:electron": "electron-rebuild -f -w node-thermal-printer"
   },
   "build": {
     "appId": "com.csc.billing",
@@ -59,7 +59,7 @@
     "electron": "^41.0.3",
     "electron-builder": "^26.8.1",
     "eslint": "^8",
-    "eslint-config-next": "14.2.3",
+    "eslint-config-next": "^16.2.4",
     "prisma": "^5.13.0",
     "ts-node": "^10.9.2",
     "typescript": "^5",
