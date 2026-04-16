@@ -194,6 +194,7 @@ label {
 }
 
 input[type="text"],
+input[type="password"],
 input[type="email"],
 input[type="number"],
 input[type="tel"],
@@ -207,7 +208,7 @@ textarea {
   font-size: 14px;
   font-family: inherit;
   color: var(--text);
-  background: #fff;
+  background: var(--surface);
   transition: border-color .15s, box-shadow .15s;
 }
 
@@ -230,7 +231,7 @@ input::placeholder, textarea::placeholder {
 }
 
 input:disabled, select:disabled, textarea:disabled {
-  background: #f9fafb;
+  background: var(--bg);
   color: var(--text-muted);
   cursor: not-allowed;
 }
@@ -247,7 +248,7 @@ textarea { resize: vertical; min-height: 80px; }
   border-radius: var(--radius-sm);
 }
 .table-input:focus {
-  background: #fff !important;
+  background: var(--surface) !important;
   border-color: var(--primary) !important;
   box-shadow: inset 0 0 0 1px var(--primary), 0 0 0 3px rgba(15, 118, 110, 0.15) !important;
 }
@@ -324,7 +325,7 @@ thead th {
   text-transform: uppercase;
   letter-spacing: .05em;
   color: var(--text-muted);
-  background: #f9fafb;
+  background: var(--bg);
   border-bottom: 1px solid var(--border-light);
   position: sticky;
   top: 0;
@@ -339,7 +340,7 @@ tbody td {
 }
 
 tbody tr:last-child td { border-bottom: none; }
-tbody tr:hover { background: #f9fafb; }
+tbody tr:hover { background: var(--bg); }
 
 /* ── Badge ───────────────────────────────────────────────────────────────── */
 .badge {
@@ -367,7 +368,7 @@ tbody tr:hover { background: #f9fafb; }
 }
 
 .modal {
-  background: #fff;
+  background: var(--surface);
   border-radius: var(--radius);
   width: 100%;
   max-width: 520px;
@@ -441,7 +442,7 @@ tbody tr:hover { background: #f9fafb; }
   object-fit: contain;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: #f9fafb;
+  background: var(--bg);
   padding: 4px;
 }
 
