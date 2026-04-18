@@ -18,6 +18,7 @@ export async function PUT(
         defaultPrice: body.defaultPrice !== undefined ? Number(body.defaultPrice) : undefined,
         taxRate: body.taxRate !== undefined ? Number(body.taxRate) : undefined,
         isActive: body.isActive !== undefined ? Boolean(body.isActive) : undefined,
+        keywords: body.keywords ?? undefined,
       },
     });
     return NextResponse.json(service);

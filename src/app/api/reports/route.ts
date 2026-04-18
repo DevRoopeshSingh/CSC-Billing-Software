@@ -8,8 +8,54 @@ export async function GET(request: Request) {
     const start = searchParams.get("start");
     const end = searchParams.get("end");
 
-    if (!type || !["daily", "date-range", "service", "customer"].includes(type)) {
+    if (!type || !["daily", "date-range", "service", "customer", "dashboard"].includes(type)) {
       return NextResponse.json({ error: "Invalid report type" }, { status: 400 });
+    }
+
+    // ── Dashboard summary ────────────────────────────────────────────────
+    if (type === "dashboard") {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const [customerCount, serviceCount, pendingInvoices, recentInvoices, todayInvoices, totalAgg] =
+        await Promise.all([
+          prisma.customer.count(),
+          prisma.service.count({ where: { isActive: true } }),
+          prisma.invoice.count({ where: { status: "PENDING" } }),
+          prisma.invoice.findMany({
+            take: 5,
+            orderBy: { createdAt: "desc" },
+            include: { customer: true },
+          }),
+          prisma.invoice.findMany({
+            where: { createdAt: { gte: today }, status: { not: "CANCELLED" } },
+            select: { total: true },
+          }),
+          prisma.invoice.aggregate({
+            where: { status: { not: "CANCELLED" } },
+            _sum: { total: true },
+          }),
+        ]);
+
+      const todayRevenue = todayInvoices.reduce((s, inv) => s + inv.total, 0);
+
+      return NextResponse.json({
+        customerCount,
+        serviceCount,
+        pendingInvoices,
+        todayRevenue,
+        todayInvoiceCount: todayInvoices.length,
+        totalRevenue: totalAgg._sum.total ?? 0,
+        recentInvoices: recentInvoices.map((inv) => ({
+          id: inv.id,
+          invoiceNo: `INV-${String(inv.id).padStart(4, "0")}`,
+          customerName: inv.customer.name,
+          total: inv.total,
+          status: inv.status,
+          paymentMode: inv.paymentMode,
+          createdAt: inv.createdAt.toISOString(),
+        })),
+      });
     }
 
     const where: any = {};

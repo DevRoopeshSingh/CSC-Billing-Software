@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Service } from "@/types";
+import { SERVICE_CATEGORIES } from "@/config/categories";
 
 const EMPTY_FORM = {
   name: "",
@@ -9,6 +10,7 @@ const EMPTY_FORM = {
   defaultPrice: 0,
   taxRate: 0,
   isActive: true,
+  keywords: "",
 };
 
 export default function ServicesPage() {
@@ -19,20 +21,27 @@ export default function ServicesPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [globalTaxRate, setGlobalTaxRate] = useState(0);
 
   const loadServices = async () => {
     const res = await fetch("/api/services");
     setServices(await res.json());
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadServices();
+    const initData = async () => {
+      const centerRes = await fetch("/api/center");
+      const center = await centerRes.json();
+      setGlobalTaxRate(center.defaultTaxRate || 0);
+      await loadServices();
+      setLoading(false);
+    };
+    initData();
   }, []);
 
   const openAdd = () => {
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, taxRate: globalTaxRate });
     setShowModal(true);
   };
 
@@ -44,6 +53,7 @@ export default function ServicesPage() {
       defaultPrice: s.defaultPrice,
       taxRate: s.taxRate,
       isActive: s.isActive,
+      keywords: s.keywords || "",
     });
     setShowModal(true);
   };
@@ -205,11 +215,9 @@ export default function ServicesPage() {
                       value={form.category}
                       onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
                     >
-                      <option value="Govt Services">Govt Services</option>
-                      <option value="Banking">Banking</option>
-                      <option value="Education">Education</option>
-                      <option value="Utility">Utility</option>
-                      <option value="Other">Other</option>
+                      {SERVICE_CATEGORIES.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -250,6 +258,16 @@ export default function ServicesPage() {
                   <label htmlFor="svcActive" style={{ cursor: "pointer" }}>
                     Active (shown on billing page)
                   </label>
+                </div>
+                <div className="form-group mt-16">
+                  <label htmlFor="svcKeywords">Keywords (Aliases for Search)</label>
+                  <input
+                    id="svcKeywords"
+                    type="text"
+                    value={form.keywords}
+                    onChange={(e) => setForm((p) => ({ ...p, keywords: e.target.value }))}
+                    placeholder="e.g. pan, nsdl, uti"
+                  />
                 </div>
               </div>
               <div className="modal-footer">

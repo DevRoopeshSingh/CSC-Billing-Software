@@ -40,9 +40,15 @@ function NewBillPageInner() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/services")
-      .then((r) => r.json())
-      .then((data: Service[]) => setServices(data.filter((s) => s.isActive)));
+    Promise.all([
+      fetch("/api/services").then((r) => r.json()),
+      fetch("/api/center").then((r) => r.json()),
+    ]).then(([svcs, center]) => {
+      setServices((svcs as Service[]).filter((s) => s.isActive));
+      if (center?.defaultPaymentMode) {
+        setPaymentMode(center.defaultPaymentMode);
+      }
+    });
   }, []);
 
   const searchCustomers = useCallback(async (q: string) => {

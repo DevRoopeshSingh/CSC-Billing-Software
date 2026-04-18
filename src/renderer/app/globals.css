@@ -1,0 +1,76 @@
+/* src/renderer/app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Variables (shared with tailwind.config.ts) ───────────────────────── */
+@layer base {
+  :root {
+    --primary:       #0F766E;
+    --primary-dark:  #0D9488;
+    --primary-light: #CCFBF1;
+    --accent:        #F59E0B;
+    --success:       #10B981;
+    --danger:        #EF4444;
+    --warning:       #F59E0B;
+    --bg:            #F3F4F6;
+    --surface:       #ffffff;
+    --border:        #E5E7EB;
+    --border-light:  #F3F4F6;
+    --text:          #111827;
+    --text-muted:    #6B7280;
+    --sidebar-w:     260px;
+
+    --radius-sm:     4px;
+    --radius:        8px;
+    --radius-md:     8px;
+    --radius-lg:     12px;
+    --shadow-sm:     0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow:        0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    --shadow-md:     0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+
+  [data-theme="dark"] {
+    --bg:            #111827;
+    --surface:       #1f2937;
+    --text:          #f9fafb;
+    --text-muted:    #9ca3af;
+    --border:        #374151;
+    --border-light:  #374151;
+  }
+
+  *, *::before, *::after {
+    @apply box-border m-0 p-0;
+  }
+
+  body {
+    @apply font-sans text-sm leading-relaxed overflow-hidden;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+  }
+}
+
+/* ── App Shell ────────────────────────────────────────────────────────────── */
+@layer components {
+  .app-shell {
+    @apply flex h-screen overflow-hidden;
+  }
+
+  .main-wrapper {
+    margin-left: var(--sidebar-w);
+    @apply flex-1 flex flex-col h-screen;
+  }
+
+  .main-content {
+    @apply flex-1 p-7 w-full overflow-y-auto;
+    background: var(--bg);
+    max-width: 1400px;
+  }
+}
+
+/* ── Print ────────────────────────────────────────────────────────────────── */
+@media print {
+  .sidebar, .no-print { display: none !important; }
+  .main-content { margin: 0; padding: 0; }
+}

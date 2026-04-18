@@ -38,6 +38,7 @@ export async function POST(request: Request) {
       defaultPrice: Number(body.defaultPrice ?? 0),
       taxRate: Number(body.taxRate ?? 0),
       isActive: body.isActive !== false,
+      keywords: body.keywords || "",
     },
   });
 
