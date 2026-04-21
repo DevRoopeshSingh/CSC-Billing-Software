@@ -32,6 +32,7 @@ export const services = sqliteTable("services", {
   defaultPrice: real("default_price").notNull().default(0),
   taxRate: real("tax_rate").notNull().default(0),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isBookmarked: integer("is_bookmarked", { mode: "boolean" }).notNull().default(false),
   keywords: text("keywords").notNull().default(""),
 });
 

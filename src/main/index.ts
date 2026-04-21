@@ -1,13 +1,25 @@
 // src/main/index.ts
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+// Electron main process: DB bootstrap, IPC handlers, window, standalone Next server.
+
+import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
+import type { IpcMainInvokeEvent } from "electron";
 import path from "path";
 import fs from "fs";
 import { spawn, ChildProcess } from "child_process";
 import { autoUpdater } from "electron-updater";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { z } from "zod";
 import { initDatabase, getDb, getSqlite, closeDatabase } from "../db";
 import * as schema from "../db/schema";
 import { IPC } from "../shared/ipc-channels";
+import {
+  customerSchema,
+  serviceSchema,
+  createInvoiceSchema,
+  centerProfileSchema,
+  InvoiceStatus,
+} from "../shared/types";
+import { scanForPrinters } from "./printerScan";
 
 // ── Paths ────────────────────────────────────────────────────────────────────
 const userDataPath = app.getPath("userData");
@@ -19,30 +31,82 @@ process.env.USER_DATA_PATH = userDataPath;
 
 let mainWindow: BrowserWindow | null = null;
 let nextProcess: ChildProcess | null = null;
+let digestShownToday = "";
 
 // ── Safe IPC wrapper ─────────────────────────────────────────────────────────
-function safeHandle(
-  channel: string,
-  handler: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any
-) {
+type Handler = (
+  event: IpcMainInvokeEvent,
+  ...args: unknown[]
+) => unknown | Promise<unknown>;
+
+function safeHandle(channel: string, handler: Handler) {
   ipcMain.handle(channel, async (event, ...args) => {
     try {
       return await handler(event, ...args);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       console.error(`[IPC ${channel}]`, err);
-      return { error: String(err) };
+      return { error: message };
     }
   });
 }
 
+// Parse the first positional arg with a Zod schema; on failure, throw so
+// safeHandle converts it into an { error } response.
+function parseArg<T>(schema: z.ZodType<T>, arg: unknown, label: string): T {
+  const result = schema.safeParse(arg);
+  if (!result.success) {
+    throw new Error(
+      `[${label}] invalid input: ${result.error.errors
+        .map((e) => `${e.path.join(".")}: ${e.message}`)
+        .join("; ")}`
+    );
+  }
+  return result.data;
+}
+
 // ── Printer config (in-memory) ───────────────────────────────────────────────
-let printerConfig = {
+interface PrinterConfig {
+  interface: string;
+  type: string;
+  printUpiQr: boolean;
+}
+let printerConfig: PrinterConfig = {
   interface: "tcp://192.168.1.100:9100",
   type: "EPSON",
   printUpiQr: false,
 };
 
-// ── Database Bootstrap ───────────────────────────────────────────────────────
+// ── DB bootstrap ─────────────────────────────────────────────────────────────
+const DEFAULT_SERVICES: Array<{
+  name: string;
+  category: string;
+  defaultPrice: number;
+  taxRate: number;
+  keywords: string;
+}> = [
+  { name: "Aadhaar Update", category: "Govt Services", defaultPrice: 100, taxRate: 0, keywords: "aadhaar uidai" },
+  { name: "PAN Application", category: "Govt Services", defaultPrice: 120, taxRate: 18, keywords: "pan income tax" },
+  { name: "Voter ID", category: "Govt Services", defaultPrice: 80, taxRate: 0, keywords: "voter epic" },
+  { name: "Xerox / Print (B&W)", category: "Miscellaneous", defaultPrice: 2, taxRate: 0, keywords: "xerox photocopy print" },
+  { name: "Form Filling", category: "Miscellaneous", defaultPrice: 50, taxRate: 18, keywords: "form application" },
+  { name: "Electricity Bill Pay", category: "Utility Bills", defaultPrice: 20, taxRate: 18, keywords: "electricity bill discom" },
+  { name: "Mobile/DTH Recharge", category: "Utility Bills", defaultPrice: 10, taxRate: 18, keywords: "recharge mobile dth" },
+  { name: "Train Ticket Booking", category: "Travel", defaultPrice: 40, taxRate: 18, keywords: "irctc train railway" },
+  { name: "Bank Passbook Print", category: "Banking & Payments", defaultPrice: 10, taxRate: 0, keywords: "bank passbook" },
+];
+
+const DEFAULT_BOOKMARKS = new Set([
+  "Aadhaar Update",
+  "PAN Application",
+  "Xerox / Print (B&W)",
+  "Form Filling",
+  "Electricity Bill Pay",
+  "Mobile/DTH Recharge",
+  "Train Ticket Booking",
+  "Bank Passbook Print",
+]);
+
 function bootstrapDatabase() {
   if (!fs.existsSync(path.dirname(dbPath))) {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -52,9 +116,8 @@ function bootstrapDatabase() {
   }
 
   const db = initDatabase(dbPath);
-
-  // Create tables if they don't exist (Drizzle push equivalent at runtime)
   const sqlite = getSqlite();
+
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS center_profiles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +139,6 @@ function bootstrapDatabase() {
       operating_hours TEXT NOT NULL DEFAULT '',
       center_description TEXT NOT NULL DEFAULT ''
     );
-
     CREATE TABLE IF NOT EXISTS customers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -86,17 +148,16 @@ function bootstrapDatabase() {
       address TEXT NOT NULL DEFAULT '',
       tags TEXT NOT NULL DEFAULT ''
     );
-
     CREATE TABLE IF NOT EXISTS services (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
+      name TEXT NOT NULL UNIQUE,
       category TEXT NOT NULL DEFAULT 'Other',
       default_price REAL NOT NULL DEFAULT 0,
       tax_rate REAL NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
+      is_bookmarked INTEGER NOT NULL DEFAULT 0,
       keywords TEXT NOT NULL DEFAULT ''
     );
-
     CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_no TEXT NOT NULL UNIQUE,
@@ -112,10 +173,9 @@ function bootstrapDatabase() {
       customer_notes TEXT,
       printed_at INTEGER
     );
-
     CREATE TABLE IF NOT EXISTS invoice_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      invoice_id INTEGER NOT NULL REFERENCES invoices(id),
+      invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
       service_id INTEGER NOT NULL REFERENCES services(id),
       description TEXT NOT NULL,
       qty INTEGER NOT NULL,
@@ -123,7 +183,6 @@ function bootstrapDatabase() {
       tax_rate REAL NOT NULL DEFAULT 0,
       line_total REAL NOT NULL
     );
-
     CREATE TABLE IF NOT EXISTS faq_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       question TEXT NOT NULL,
@@ -135,7 +194,6 @@ function bootstrapDatabase() {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
-
     CREATE TABLE IF NOT EXISTS service_checklists (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
@@ -144,7 +202,6 @@ function bootstrapDatabase() {
       notes TEXT NOT NULL DEFAULT '',
       sort_order INTEGER NOT NULL DEFAULT 0
     );
-
     CREATE TABLE IF NOT EXISTS leads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -157,7 +214,6 @@ function bootstrapDatabase() {
       created_at INTEGER NOT NULL,
       converted_customer_id INTEGER
     );
-
     CREATE TABLE IF NOT EXISTS message_templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -165,31 +221,23 @@ function bootstrapDatabase() {
       body TEXT NOT NULL,
       is_active INTEGER NOT NULL DEFAULT 1
     );
-
-    CREATE TABLE IF NOT EXISTS agent_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      agent_type TEXT NOT NULL,
-      session_id TEXT NOT NULL DEFAULT '',
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      tool_name TEXT NOT NULL DEFAULT '',
-      tool_input TEXT NOT NULL DEFAULT '',
-      duration_ms INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS api_keys (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      key TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL,
-      scope TEXT NOT NULL DEFAULT 'copilot',
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at INTEGER NOT NULL,
-      last_used_at INTEGER
-    );
+    CREATE INDEX IF NOT EXISTS idx_customers_mobile ON customers(mobile);
+    CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at);
+    CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id);
   `);
 
-  // Seed default center profile if empty
+  // Migration: add is_bookmarked if an older DB predates it.
+  const cols = sqlite
+    .prepare("PRAGMA table_info(services)")
+    .all() as { name: string }[];
+  if (!cols.find((c) => c.name === "is_bookmarked")) {
+    sqlite.exec(
+      "ALTER TABLE services ADD COLUMN is_bookmarked INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+
+  // Seed a single center profile row.
   const profileCount = sqlite
     .prepare("SELECT COUNT(*) as count FROM center_profiles")
     .get() as { count: number };
@@ -197,123 +245,178 @@ function bootstrapDatabase() {
     db.insert(schema.centerProfiles).values({}).run();
   }
 
+  // Seed default services if the catalog is empty.
+  const serviceCount = sqlite
+    .prepare("SELECT COUNT(*) as count FROM services")
+    .get() as { count: number };
+  if (serviceCount.count === 0) {
+    const insert = sqlite.prepare(
+      `INSERT INTO services (name, category, default_price, tax_rate, is_active, is_bookmarked, keywords)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`
+    );
+    const tx = sqlite.transaction(() => {
+      for (const s of DEFAULT_SERVICES) {
+        insert.run(
+          s.name,
+          s.category,
+          s.defaultPrice,
+          s.taxRate,
+          DEFAULT_BOOKMARKS.has(s.name) ? 1 : 0,
+          s.keywords
+        );
+      }
+    });
+    tx();
+  }
+
   return db;
 }
 
 // ── Window ───────────────────────────────────────────────────────────────────
+const DEV_URL = "http://localhost:3000";
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, "../electron/preload.js"),
+      preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
     },
     icon: path.join(__dirname, "../public/icon.svg"),
+  });
+
+  // Lock navigation and new-window opens to our own origin.
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.on("will-navigate", (e, url) => {
+    if (!url.startsWith(DEV_URL) && !url.startsWith("file://")) e.preventDefault();
   });
 
   const isDev = !app.isPackaged;
 
   if (isDev) {
-    mainWindow.loadURL("http://localhost:3000");
+    mainWindow.loadURL(DEV_URL);
     mainWindow.webContents.openDevTools();
   } else {
-    const nextPath = path.join(
-      __dirname,
-      "../node_modules/next/dist/bin/next"
-    );
-
-    nextProcess = spawn("node", [nextPath, "start", "-p", "3000"], {
-      env: {
-        ...process.env,
-        PORT: "3000",
-        DATABASE_URL: `file:${dbPath}`,
-        USER_DATA_PATH: userDataPath,
-      },
-    });
-
-    nextProcess.stdout?.on("data", (data: Buffer) => {
-      const output = data.toString();
-      console.log(`Next Server: ${output}`);
-      if (
-        output.includes("ready") ||
-        output.includes("started server on")
-      ) {
-        mainWindow?.loadURL("http://localhost:3000");
-      }
-    });
-
-    nextProcess.stderr?.on("data", (data: Buffer) => {
-      console.error(`Next Error: ${data}`);
-    });
-
-    setTimeout(() => {
-      if (mainWindow?.webContents.getURL() === "") {
-        mainWindow.loadURL("http://localhost:3000");
-      }
-    }, 6000);
+    startStandaloneServer();
   }
-
-  autoUpdater.checkForUpdatesAndNotify().catch((e) => console.error(e));
 }
 
-// ── Register IPC Handlers ────────────────────────────────────────────────────
+// Boot the Next.js standalone server inside the Electron process tree using
+// the shipped Electron binary with ELECTRON_RUN_AS_NODE=1 (no system node).
+function startStandaloneServer() {
+  const serverPath = path.join(
+    process.resourcesPath,
+    "app",
+    ".next",
+    "standalone",
+    "server.js"
+  );
+  if (!fs.existsSync(serverPath)) {
+    console.error("[standalone] server.js not found at", serverPath);
+    return;
+  }
+
+  nextProcess = spawn(process.execPath, [serverPath], {
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      PORT: "3000",
+      HOSTNAME: "127.0.0.1",
+      DATABASE_URL: `file:${dbPath}`,
+      USER_DATA_PATH: userDataPath,
+    },
+  });
+
+  let loaded = false;
+  const tryLoad = () => {
+    if (loaded || !mainWindow) return;
+    loaded = true;
+    mainWindow.loadURL(DEV_URL);
+  };
+
+  nextProcess.stdout?.on("data", (data: Buffer) => {
+    const output = data.toString();
+    console.log(`[next] ${output}`);
+    if (output.includes("Ready") || output.includes("ready")) tryLoad();
+  });
+  nextProcess.stderr?.on("data", (d: Buffer) =>
+    console.error(`[next:err] ${d}`)
+  );
+
+  setTimeout(tryLoad, 6000);
+}
+
+// ── IPC handler registration ────────────────────────────────────────────────
 function registerIpcHandlers() {
   const db = getDb();
 
-  // ── App ────────────────────────────────────────────────────────────────
+  // App
   safeHandle(IPC.APP_VERSION, () => app.getVersion());
   safeHandle(IPC.APP_DB_PATH, () => dbPath);
 
-  // ── Center Profile ─────────────────────────────────────────────────────
-  safeHandle(IPC.CENTER_GET, () => {
-    return db.select().from(schema.centerProfiles).get();
-  });
-
-  safeHandle(IPC.CENTER_UPDATE, (_e, data: Partial<typeof schema.centerProfiles.$inferInsert>) => {
-    return db
-      .update(schema.centerProfiles)
+  // Center profile — single-row table (id = 1).
+  safeHandle(IPC.CENTER_GET, () =>
+    db.select().from(schema.centerProfiles).get()
+  );
+  safeHandle(IPC.CENTER_UPDATE, (_e, raw) => {
+    const data = parseArg(
+      centerProfileSchema.partial(),
+      raw,
+      "center:update"
+    );
+    db.update(schema.centerProfiles)
       .set(data)
       .where(eq(schema.centerProfiles.id, 1))
       .run();
+    return db.select().from(schema.centerProfiles).get();
   });
 
-  // ── Customers ──────────────────────────────────────────────────────────
-  safeHandle(IPC.CUSTOMERS_LIST, () => {
-    return db.select().from(schema.customers).all();
-  });
-
-  safeHandle(IPC.CUSTOMERS_GET, (_e, id: number) => {
-    return db
+  // Customers
+  safeHandle(IPC.CUSTOMERS_LIST, () =>
+    db.select().from(schema.customers).all()
+  );
+  safeHandle(IPC.CUSTOMERS_GET, (_e, id) =>
+    db
       .select()
       .from(schema.customers)
-      .where(eq(schema.customers.id, id))
-      .get();
-  });
-
-  safeHandle(IPC.CUSTOMERS_CREATE, (_e, data: typeof schema.customers.$inferInsert) => {
+      .where(eq(schema.customers.id, z.number().int().parse(id)))
+      .get()
+  );
+  safeHandle(IPC.CUSTOMERS_CREATE, (_e, raw) => {
+    const data = parseArg(
+      customerSchema.omit({ id: true }),
+      raw,
+      "customers:create"
+    );
     return db.insert(schema.customers).values(data).returning().get();
   });
-
-  safeHandle(IPC.CUSTOMERS_UPDATE, (_e, id: number, data: Partial<typeof schema.customers.$inferInsert>) => {
+  safeHandle(IPC.CUSTOMERS_UPDATE, (_e, id, raw) => {
+    const _id = z.number().int().parse(id);
+    const data = parseArg(
+      customerSchema.partial(),
+      raw,
+      "customers:update"
+    );
     return db
       .update(schema.customers)
       .set(data)
-      .where(eq(schema.customers.id, id))
+      .where(eq(schema.customers.id, _id))
       .returning()
       .get();
   });
-
-  safeHandle(IPC.CUSTOMERS_DELETE, (_e, id: number) => {
-    return db
-      .delete(schema.customers)
-      .where(eq(schema.customers.id, id))
+  safeHandle(IPC.CUSTOMERS_DELETE, (_e, id) => {
+    const _id = z.number().int().parse(id);
+    db.delete(schema.customers)
+      .where(eq(schema.customers.id, _id))
       .run();
+    return { success: true };
   });
-
-  safeHandle(IPC.CUSTOMERS_SEARCH, (_e, query: string) => {
-    const pattern = `%${query}%`;
+  safeHandle(IPC.CUSTOMERS_SEARCH, (_e, query) => {
+    const q = z.string().parse(query);
+    const pattern = `%${q}%`;
     return db
       .select()
       .from(schema.customers)
@@ -323,143 +426,205 @@ function registerIpcHandlers() {
       .all();
   });
 
-  // ── Services ───────────────────────────────────────────────────────────
-  safeHandle(IPC.SERVICES_LIST, () => {
-    return db.select().from(schema.services).all();
-  });
-
-  safeHandle(IPC.SERVICES_GET, (_e, id: number) => {
-    return db
+  // Services
+  safeHandle(IPC.SERVICES_LIST, () =>
+    db.select().from(schema.services).all()
+  );
+  safeHandle(IPC.SERVICES_GET, (_e, id) =>
+    db
       .select()
       .from(schema.services)
-      .where(eq(schema.services.id, id))
-      .get();
-  });
-
-  safeHandle(IPC.SERVICES_CREATE, (_e, data: typeof schema.services.$inferInsert) => {
+      .where(eq(schema.services.id, z.number().int().parse(id)))
+      .get()
+  );
+  safeHandle(IPC.SERVICES_CREATE, (_e, raw) => {
+    const data = parseArg(
+      serviceSchema.omit({ id: true }),
+      raw,
+      "services:create"
+    );
     return db.insert(schema.services).values(data).returning().get();
   });
-
-  safeHandle(IPC.SERVICES_UPDATE, (_e, id: number, data: Partial<typeof schema.services.$inferInsert>) => {
+  safeHandle(IPC.SERVICES_UPDATE, (_e, id, raw) => {
+    const _id = z.number().int().parse(id);
+    const data = parseArg(serviceSchema.partial(), raw, "services:update");
     return db
       .update(schema.services)
       .set(data)
-      .where(eq(schema.services.id, id))
+      .where(eq(schema.services.id, _id))
       .returning()
       .get();
   });
-
-  safeHandle(IPC.SERVICES_DELETE, (_e, id: number) => {
-    return db
-      .delete(schema.services)
-      .where(eq(schema.services.id, id))
+  safeHandle(IPC.SERVICES_DELETE, (_e, id) => {
+    const _id = z.number().int().parse(id);
+    db.delete(schema.services)
+      .where(eq(schema.services.id, _id))
       .run();
+    return { success: true };
   });
+  safeHandle(IPC.SERVICES_TOGGLE_BOOKMARK, (_e, id) => {
+    const _id = z.number().int().parse(id);
+    const svc = db
+      .select()
+      .from(schema.services)
+      .where(eq(schema.services.id, _id))
+      .get();
+    if (!svc) throw new Error("Service not found");
+    return db
+      .update(schema.services)
+      .set({ isBookmarked: !svc.isBookmarked })
+      .where(eq(schema.services.id, _id))
+      .returning()
+      .get();
+  });
+  safeHandle(IPC.SERVICES_GET_BOOKMARKED, () =>
+    db
+      .select()
+      .from(schema.services)
+      .where(
+        and(
+          eq(schema.services.isBookmarked, true),
+          eq(schema.services.isActive, true)
+        )
+      )
+      .all()
+  );
 
-  // ── Invoices ───────────────────────────────────────────────────────────
-  safeHandle(IPC.INVOICES_LIST, () => {
-    return db.query.invoices.findMany({
+  // Invoices — atomic invoice-number generation inside the transaction.
+  safeHandle(IPC.INVOICES_LIST, () =>
+    db.query.invoices.findMany({
       with: { customer: true, items: true },
       orderBy: [desc(schema.invoices.createdAt)],
-    });
-  });
-
-  safeHandle(IPC.INVOICES_GET, (_e, id: number) => {
-    return db.query.invoices.findFirst({
-      where: eq(schema.invoices.id, id),
-      with: {
-        customer: true,
-        items: { with: { service: true } },
-      },
-    });
-  });
-
-  safeHandle(IPC.INVOICES_CREATE, (_e, data: {
-    customerId: number;
-    invoiceNo: string;
-    subtotal: number;
-    taxTotal: number;
-    discount: number;
-    total: number;
-    paymentMode: string;
-    status: string;
-    notes?: string;
-    customerNotes?: string;
-    items: Array<{
-      serviceId: number;
-      description: string;
-      qty: number;
-      rate: number;
-      taxRate: number;
-      lineTotal: number;
-    }>;
-  }) => {
+    })
+  );
+  safeHandle(IPC.INVOICES_GET, (_e, id) =>
+    db.query.invoices.findFirst({
+      where: eq(schema.invoices.id, z.number().int().parse(id)),
+      with: { customer: true, items: { with: { service: true } } },
+    })
+  );
+  safeHandle(IPC.INVOICES_CREATE, (_e, raw) => {
+    const data = parseArg(createInvoiceSchema, raw, "invoices:create");
     const sqlite = getSqlite();
-    const transaction = sqlite.transaction(() => {
+
+    return sqlite.transaction(() => {
+      // Resolve customer (existing or create new).
+      let customerId = data.customerId;
+      if (!customerId && data.newCustomer) {
+        const created = db
+          .insert(schema.customers)
+          .values({
+            name: data.newCustomer.name,
+            mobile: data.newCustomer.mobile,
+          })
+          .returning()
+          .get();
+        customerId = created.id;
+      }
+      if (!customerId) throw new Error("customerId or newCustomer required");
+
+      // Atomically read + bump the invoice counter.
+      const profile = db
+        .select()
+        .from(schema.centerProfiles)
+        .where(eq(schema.centerProfiles.id, 1))
+        .get();
+      const prefix = profile?.invoicePrefix ?? "INV-";
+      const seq = (profile?.invoiceNumber ?? 0) + 1;
+      const d = new Date();
+      const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(
+        d.getDate()
+      ).padStart(2, "0")}`;
+      const invoiceNo = `${prefix}${ymd}-${String(seq).padStart(3, "0")}`;
+
+      // Compute totals server-side as a guard against tampering.
+      const items = data.items.map((it) => {
+        const rate = it.taxRate ?? 0;
+        const base = it.qty * it.rate;
+        const tax = +(base * (rate / 100)).toFixed(2);
+        return { ...it, taxRate: rate, lineTotal: +(base + tax).toFixed(2), tax };
+      });
+      const subtotal = +items
+        .reduce((s, it) => s + it.qty * it.rate, 0)
+        .toFixed(2);
+      const taxTotal = +items.reduce((s, it) => s + it.tax, 0).toFixed(2);
+      const discount = data.discount ?? 0;
+      const total = +(subtotal + taxTotal - discount).toFixed(2);
+
       const invoice = db
         .insert(schema.invoices)
         .values({
-          customerId: data.customerId,
-          invoiceNo: data.invoiceNo,
-          subtotal: data.subtotal,
-          taxTotal: data.taxTotal,
-          discount: data.discount,
-          total: data.total,
-          paymentMode: data.paymentMode,
-          status: data.status,
-          notes: data.notes,
-          customerNotes: data.customerNotes,
+          customerId,
+          invoiceNo,
+          subtotal,
+          taxTotal,
+          discount,
+          total,
+          paymentMode: data.paymentMode ?? "Cash",
+          status: data.status ?? "PAID",
+          notes: data.notes ?? null,
+          customerNotes: data.customerNotes ?? null,
         })
         .returning()
         .get();
 
-      const items = data.items.map((item) =>
-        db
-          .insert(schema.invoiceItems)
-          .values({ ...item, invoiceId: invoice.id })
-          .returning()
-          .get()
-      );
+      for (const it of items) {
+        db.insert(schema.invoiceItems)
+          .values({
+            invoiceId: invoice.id,
+            serviceId: it.serviceId,
+            description: it.description,
+            qty: it.qty,
+            rate: it.rate,
+            taxRate: it.taxRate,
+            lineTotal: it.lineTotal,
+          })
+          .run();
+      }
 
-      return { ...invoice, items };
-    });
+      db.update(schema.centerProfiles)
+        .set({ invoiceNumber: seq })
+        .where(eq(schema.centerProfiles.id, 1))
+        .run();
 
-    return transaction();
+      return { id: invoice.id, invoiceNo, customerId, total };
+    })();
   });
 
-  safeHandle(IPC.INVOICES_UPDATE_STATUS, (_e, id: number, status: string) => {
+  safeHandle(IPC.INVOICES_UPDATE_STATUS, (_e, id, status) => {
+    const _id = z.number().int().parse(id);
+    const _status = InvoiceStatus.parse(status);
     return db
       .update(schema.invoices)
-      .set({ status })
-      .where(eq(schema.invoices.id, id))
+      .set({ status: _status })
+      .where(eq(schema.invoices.id, _id))
       .returning()
       .get();
   });
-
-  safeHandle(IPC.INVOICES_DELETE, (_e, id: number) => {
+  safeHandle(IPC.INVOICES_DELETE, (_e, id) => {
+    const _id = z.number().int().parse(id);
     const sqlite = getSqlite();
-    const transaction = sqlite.transaction(() => {
+    sqlite.transaction(() => {
       db.delete(schema.invoiceItems)
-        .where(eq(schema.invoiceItems.invoiceId, id))
+        .where(eq(schema.invoiceItems.invoiceId, _id))
         .run();
       db.delete(schema.invoices)
-        .where(eq(schema.invoices.id, id))
+        .where(eq(schema.invoices.id, _id))
         .run();
-    });
-    return transaction();
+    })();
+    return { success: true };
   });
+  safeHandle(IPC.INVOICES_GENERATE_PDF, () => ({
+    error: "PDF generation not implemented yet",
+  }));
 
-  safeHandle(IPC.INVOICES_GENERATE_PDF, () => {
-    return { error: "not implemented yet" };
-  });
-
-  // ── Reports ────────────────────────────────────────────────────────────
-  safeHandle(IPC.REPORTS_DAILY, (_e, dateStr: string) => {
-    const start = new Date(dateStr);
+  // Reports
+  safeHandle(IPC.REPORTS_DAILY, (_e, dateStr) => {
+    const _date = z.string().parse(dateStr);
+    const start = new Date(_date);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(dateStr);
+    const end = new Date(_date);
     end.setHours(23, 59, 59, 999);
-
     return db.query.invoices.findMany({
       where: and(
         gte(schema.invoices.createdAt, start),
@@ -468,13 +633,13 @@ function registerIpcHandlers() {
       with: { customer: true, items: true },
     });
   });
-
-  safeHandle(IPC.REPORTS_RANGE, (_e, startStr: string, endStr: string) => {
-    const start = new Date(startStr);
+  safeHandle(IPC.REPORTS_RANGE, (_e, startStr, endStr) => {
+    const s = z.string().parse(startStr);
+    const e = z.string().parse(endStr);
+    const start = new Date(s);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(endStr);
+    const end = new Date(e);
     end.setHours(23, 59, 59, 999);
-
     return db.query.invoices.findMany({
       where: and(
         gte(schema.invoices.createdAt, start),
@@ -485,78 +650,130 @@ function registerIpcHandlers() {
     });
   });
 
-  // ── Printer ────────────────────────────────────────────────────────────
-  safeHandle(IPC.PRINTER_GET_CONFIG, () => {
-    return printerConfig;
-  });
-
-  safeHandle(IPC.PRINTER_SET_CONFIG, (_e, config: Partial<typeof printerConfig>) => {
-    printerConfig = { ...printerConfig, ...config };
+  // Printer
+  safeHandle(IPC.PRINTER_GET_CONFIG, () => printerConfig);
+  safeHandle(IPC.PRINTER_SET_CONFIG, (_e, cfg) => {
+    const parsed = parseArg(
+      z
+        .object({
+          interface: z.string().optional(),
+          type: z.string().optional(),
+          printUpiQr: z.boolean().optional(),
+        })
+        .strict(),
+      cfg,
+      "printer:set-config"
+    );
+    printerConfig = { ...printerConfig, ...parsed };
     return { success: true };
   });
+  safeHandle(IPC.PRINTER_LIST, () => scanForPrinters());
+  safeHandle(IPC.PRINTER_TEST, () => ({
+    error: "Printer test not implemented yet",
+  }));
+  safeHandle(IPC.PRINTER_PRINT_RECEIPT, () => ({
+    error: "Printer receipt not implemented yet",
+  }));
 
-  safeHandle(IPC.PRINTER_LIST, () => {
-    return { error: "not implemented yet" };
-  });
-
-  safeHandle(IPC.PRINTER_TEST, (_e, config?: Partial<typeof printerConfig>) => {
-    if (config) printerConfig = { ...printerConfig, ...config };
-    return { error: "not implemented yet" };
-  });
-
-  safeHandle(IPC.PRINTER_PRINT_RECEIPT, (_e, _invoice: unknown) => {
-    return { error: "not implemented yet" };
-  });
-
-  // ── Backup ─────────────────────────────────────────────────────────────
+  // Backup
   safeHandle(IPC.BACKUP_EXPORT, () => {
-    const backupDir = path.join(
-      app.getPath("documents"),
-      "CSC-Backups"
-    );
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
-    }
-
-    const timestamp = new Date()
+    const backupDir = path.join(app.getPath("documents"), "CSC-Backups");
+    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+    const stamp = new Date()
       .toISOString()
       .replace(/[:.]/g, "-")
       .split("T")[0];
-    const backupFile = path.join(
-      backupDir,
-      `csc_billing_${timestamp}.db`
-    );
-
-    fs.copyFileSync(dbPath, backupFile);
-    return { success: true, path: backupFile };
+    const out = path.join(backupDir, `csc_billing_${stamp}.db`);
+    fs.copyFileSync(dbPath, out);
+    return { success: true, path: out };
   });
-
   safeHandle(IPC.BACKUP_IMPORT, async () => {
     if (!mainWindow) return { error: "No active window" };
-
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Import Backup",
       filters: [{ name: "SQLite Database", extensions: ["db"] }],
       properties: ["openFile"],
     });
-
     if (result.canceled || result.filePaths.length === 0) {
       return { success: false, cancelled: true };
     }
-
-    const importPath = result.filePaths[0];
     closeDatabase();
-    fs.copyFileSync(importPath, dbPath);
+    fs.copyFileSync(result.filePaths[0], dbPath);
     initDatabase(dbPath);
-    return { success: true, path: importPath };
+    return { success: true, path: result.filePaths[0] };
   });
 }
 
-// ── App Lifecycle ────────────────────────────────────────────────────────────
+// ── Auto-backup on quit ──────────────────────────────────────────────────────
+async function performAutoBackup() {
+  if (!fs.existsSync(dbPath)) return;
+  const backupDir = path.join(app.getPath("documents"), "CSC-Backups");
+  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").split("T")[0];
+  const out = path.join(backupDir, `csc_billing_auto_${stamp}.db`);
+  if (fs.existsSync(out)) return;
+  fs.copyFileSync(dbPath, out);
+  const files = fs
+    .readdirSync(backupDir)
+    .filter((f) => f.startsWith("csc_billing_auto_") && f.endsWith(".db"))
+    .sort()
+    .reverse();
+  for (let i = 7; i < files.length; i++) {
+    fs.unlinkSync(path.join(backupDir, files[i]));
+  }
+}
+
+// ── Daily digest notification (8 PM check) ───────────────────────────────────
+function scheduleDailyDigest() {
+  setInterval(
+    () => {
+      const now = new Date();
+      if (now.getHours() !== 20 || now.getMinutes() >= 30) return;
+      const today = now.toISOString().split("T")[0];
+      if (digestShownToday === today) return;
+      digestShownToday = today;
+      try {
+        const db = getDb();
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        const invoices = db.query.invoices.findMany({
+          where: and(
+            gte(schema.invoices.createdAt, start),
+            lte(schema.invoices.createdAt, end)
+          ),
+        }).sync();
+        const total = invoices.reduce(
+          (s: number, i: { total: number }) => s + (i.total || 0),
+          0
+        );
+        if (Notification.isSupported()) {
+          new Notification({
+            title: "CSC Billing — Daily Summary",
+            body: `Today: ${invoices.length} invoices, Total: ₹${total.toFixed(0)}`,
+          }).show();
+        }
+      } catch (err) {
+        console.error("[daily-digest]", err);
+      }
+    },
+    30 * 60 * 1000
+  );
+}
+
+// ── App lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   bootstrapDatabase();
   registerIpcHandlers();
   createWindow();
+  scheduleDailyDigest();
+
+  if (app.isPackaged && process.env.UPDATE_FEED) {
+    autoUpdater
+      .checkForUpdatesAndNotify()
+      .catch((e) => console.error("[auto-update]", e));
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -567,9 +784,23 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => {
-  closeDatabase();
-  if (nextProcess) {
-    nextProcess.kill();
-  }
+let quitting = false;
+app.on("before-quit", (event) => {
+  if (quitting) return;
+  event.preventDefault();
+  quitting = true;
+  (async () => {
+    try {
+      await performAutoBackup();
+    } catch (err) {
+      console.error("[auto-backup]", err);
+    }
+    try {
+      closeDatabase();
+    } catch {
+      // ignore shutdown errors
+    }
+    if (nextProcess) nextProcess.kill();
+    app.exit(0);
+  })();
 });

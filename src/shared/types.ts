@@ -46,6 +46,7 @@ export const serviceSchema = z.object({
   defaultPrice: z.number().nonnegative().default(0),
   taxRate: z.number().nonnegative().max(100).default(0),
   isActive: z.boolean().default(true),
+  isBookmarked: z.boolean().default(false),
   keywords: z.string().default(""),
 });
 

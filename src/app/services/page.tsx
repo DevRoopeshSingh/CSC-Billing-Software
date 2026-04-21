@@ -1,8 +1,23 @@
+// src/app/services/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import { Service } from "@/types";
+import { useState, useEffect, useCallback } from "react";
+import { cn } from "@/lib/utils";
 import { SERVICE_CATEGORIES } from "@/config/categories";
+import { ipc, IpcError } from "@/lib/ipc";
+import { IPC } from "@/shared/ipc-channels";
+import { useToast } from "@/components/Toast";
+import type { Service, CenterProfile } from "@/shared/types";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Briefcase,
+  X,
+  Search,
+  ToggleLeft,
+  ToggleRight,
+} from "lucide-react";
 
 const EMPTY_FORM = {
   name: "",
@@ -10,34 +25,58 @@ const EMPTY_FORM = {
   defaultPrice: 0,
   taxRate: 0,
   isActive: true,
+  isBookmarked: false,
   keywords: "",
 };
 
 export default function ServicesPage() {
+  const { toast } = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("ALL");
+
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [globalTaxRate, setGlobalTaxRate] = useState(0);
 
-  const loadServices = async () => {
-    const res = await fetch("/api/services");
-    setServices(await res.json());
-  };
+  const loadServices = useCallback(async () => {
+    try {
+      const list = await ipc<Service[]>(IPC.SERVICES_LIST);
+      setServices(list ?? []);
+    } catch (err) {
+      toast(
+        err instanceof IpcError ? err.message : "Failed to load services",
+        "error"
+      );
+    }
+  }, [toast]);
 
   useEffect(() => {
-    const initData = async () => {
-      const centerRes = await fetch("/api/center");
-      const center = await centerRes.json();
-      setGlobalTaxRate(center.defaultTaxRate || 0);
+    (async () => {
+      try {
+        const center = await ipc<CenterProfile>(IPC.CENTER_GET);
+        setGlobalTaxRate(center?.defaultTaxRate ?? 0);
+      } catch {
+        // center profile not configured yet
+      }
       await loadServices();
       setLoading(false);
-    };
-    initData();
-  }, []);
+    })();
+  }, [loadServices]);
+
+  const filtered = services.filter((s) => {
+    const q = search.toLowerCase();
+    const matchSearch =
+      !search ||
+      s.name.toLowerCase().includes(q) ||
+      (s.keywords ?? "").toLowerCase().includes(q);
+    const matchCategory =
+      filterCategory === "ALL" || s.category === filterCategory;
+    return matchSearch && matchCategory;
+  });
 
   const openAdd = () => {
     setEditingId(null);
@@ -46,132 +85,238 @@ export default function ServicesPage() {
   };
 
   const openEdit = (s: Service) => {
-    setEditingId(s.id);
+    setEditingId(s.id!);
     setForm({
       name: s.name,
       category: s.category || "Other",
       defaultPrice: s.defaultPrice,
       taxRate: s.taxRate,
       isActive: s.isActive,
+      isBookmarked: s.isBookmarked,
       keywords: s.keywords || "",
     });
     setShowModal(true);
   };
 
-  const handleToggleActive = async (s: Service) => {
-    await fetch(`/api/services/${s.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !s.isActive }),
-    });
-    loadServices();
+  const handleToggle = async (s: Service) => {
+    try {
+      await ipc(IPC.SERVICES_UPDATE, s.id, { isActive: !s.isActive });
+      loadServices();
+    } catch (err) {
+      toast(err instanceof IpcError ? err.message : "Update failed", "error");
+    }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this service?")) return;
-    const res = await fetch(`/api/services/${id}`, { method: "DELETE" });
-    if (res.ok) {
+    if (
+      !confirm(
+        "Delete this service? It cannot be deleted if used in invoices."
+      )
+    )
+      return;
+    try {
+      await ipc(IPC.SERVICES_DELETE, id);
       loadServices();
-    } else {
-      alert("Cannot delete — this service is used in invoices.");
+      toast("Service deleted", "success");
+    } catch (err) {
+      toast(
+        err instanceof IpcError
+          ? err.message
+          : "Cannot delete — service is used in invoices",
+        "error"
+      );
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    setMessage(null);
     try {
-      const url = editingId ? `/api/services/${editingId}` : "/api/services";
-      const method = editingId ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          defaultPrice: Number(form.defaultPrice),
-          taxRate: Number(form.taxRate),
-        }),
-      });
-      if (res.ok) {
-        setShowModal(false);
-        loadServices();
-        setMessage({ type: "success", text: editingId ? "Service updated!" : "Service added!" });
+      const payload = {
+        ...form,
+        defaultPrice: Number(form.defaultPrice),
+        taxRate: Number(form.taxRate),
+      };
+      if (editingId) {
+        await ipc(IPC.SERVICES_UPDATE, editingId, payload);
       } else {
-        setMessage({ type: "error", text: "Failed to save service." });
+        await ipc(IPC.SERVICES_CREATE, payload);
       }
+      setShowModal(false);
+      loadServices();
+      toast(editingId ? "Service updated" : "Service added", "success");
+    } catch (err) {
+      toast(
+        err instanceof IpcError ? err.message : "Failed to save service",
+        "error"
+      );
     } finally {
       setSaving(false);
     }
   };
 
+  const categories = ["ALL", ...SERVICE_CATEGORIES];
+
   return (
-    <div>
-      <div className="page-header">
-        <h2>Services</h2>
-        <button className="btn btn-primary" onClick={openAdd}>
-          + Add Service
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">Services</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage the services your center offers
+          </p>
+        </div>
+        <button
+          onClick={openAdd}
+          className={cn(
+            "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
+            "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
+          )}
+        >
+          <Plus className="h-4 w-4" />
+          Add Service
         </button>
       </div>
 
-      {message && (
-        <div className={`alert alert-${message.type}`}>{message.text}</div>
-      )}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative max-w-xs flex-1">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search services..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className={cn(
+              "w-full rounded-lg border border-border bg-card py-2.5 pl-10 pr-4 text-sm",
+              "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            )}
+          />
+        </div>
+        <select
+          value={filterCategory}
+          onChange={(e) => setFilterCategory(e.target.value)}
+          className={cn(
+            "rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground",
+            "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          )}
+        >
+          {categories.map((cat) => (
+            <option key={cat} value={cat}>
+              {cat === "ALL" ? "All Categories" : cat}
+            </option>
+          ))}
+        </select>
+      </div>
 
-      <div className="card" style={{ padding: 0 }}>
+      <div className="rounded-xl border border-border bg-card shadow-sm">
         {loading ? (
-          <p className="text-muted text-center" style={{ padding: 32 }}>Loading…</p>
-        ) : services.length === 0 ? (
-          <p className="text-muted text-center" style={{ padding: 32 }}>
-            No services yet. Click <strong>+ Add Service</strong> to get started.
-          </p>
+          <div className="flex h-48 items-center justify-center">
+            <p className="text-sm text-muted-foreground">Loading services...</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex h-48 flex-col items-center justify-center gap-3">
+            <Briefcase className="h-10 w-10 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">
+              {search || filterCategory !== "ALL"
+                ? "No services match your filters"
+                : "No services yet. Add your first service."}
+            </p>
+          </div>
         ) : (
-          <div className="table-wrap">
-            <table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
               <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Service Name</th>
-                  <th>Category</th>
-                  <th className="text-right">Default Price (₹)</th>
-                  <th className="text-right">Tax Rate (%)</th>
-                  <th className="text-center">Status</th>
-                  <th className="text-center">Actions</th>
+                <tr className="border-b border-border text-left">
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Service
+                  </th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Category
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Price
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Tax
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {services.map((s) => (
-                  <tr key={s.id}>
-                    <td style={{ color: "#9ca3af", width: 40 }}>{s.id}</td>
-                    <td style={{ fontWeight: 500 }}>{s.name}</td>
-                    <td><span className="badge badge-blue">{s.category}</span></td>
-                    <td className="text-right">₹{s.defaultPrice.toFixed(2)}</td>
-                    <td className="text-right">{s.taxRate}%</td>
-                    <td className="text-center">
+                {filtered.map((s) => (
+                  <tr
+                    key={s.id}
+                    className={cn(
+                      "border-b border-border/50 last:border-0 transition-colors hover:bg-background/60",
+                      !s.isActive && "opacity-50"
+                    )}
+                  >
+                    <td className="px-6 py-4">
+                      <p className="font-semibold text-foreground">{s.name}</p>
+                      {s.keywords && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {s.keywords}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                        {s.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right font-semibold text-foreground">
+                      ₹{s.defaultPrice.toFixed(2)}
+                    </td>
+                    <td className="px-6 py-4 text-right text-muted-foreground">
+                      {s.taxRate}%
+                    </td>
+                    <td className="px-6 py-4 text-center">
                       <button
-                        className={`badge ${s.isActive ? "badge-green" : "badge-red"}`}
-                        style={{ cursor: "pointer", border: "none" }}
-                        onClick={() => handleToggleActive(s)}
-                        title="Click to toggle"
+                        onClick={() => handleToggle(s)}
+                        title={
+                          s.isActive
+                            ? "Click to deactivate"
+                            : "Click to activate"
+                        }
+                        className="inline-flex items-center gap-1.5 text-xs font-medium transition-colors"
                       >
-                        {s.isActive ? "Active" : "Inactive"}
+                        {s.isActive ? (
+                          <>
+                            <ToggleRight className="h-5 w-5 text-emerald-500" />
+                            <span className="text-emerald-600">Active</span>
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft className="h-5 w-5 text-muted-foreground" />
+                            <span className="text-muted-foreground">
+                              Inactive
+                            </span>
+                          </>
+                        )}
                       </button>
                     </td>
-                    <td className="text-center">
-                      <span className="flex gap-8 items-center" style={{ justifyContent: "center" }}>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
                         <button
-                          className="btn btn-ghost btn-sm"
                           onClick={() => openEdit(s)}
+                          className="rounded-lg border border-border p-1.5 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                          title="Edit"
                         >
-                          Edit
+                          <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          className="btn btn-danger btn-sm"
-                          onClick={() => handleDelete(s.id)}
+                          onClick={() => handleDelete(s.id!)}
+                          className="rounded-lg border border-border p-1.5 text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                          title="Delete"
                         >
-                          Delete
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
-                      </span>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -181,105 +326,192 @@ export default function ServicesPage() {
         )}
       </div>
 
-      {/* Add / Edit Modal */}
       {showModal && (
-        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>{editingId ? "Edit Service" : "Add New Service"}</h3>
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl bg-card shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <h3 className="text-base font-bold text-foreground">
+                {editingId ? "Edit Service" : "Add New Service"}
+              </h3>
               <button
-                className="btn btn-ghost btn-sm"
                 onClick={() => setShowModal(false)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-background"
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
             <form onSubmit={handleSubmit}>
-              <div className="modal-body">
-                <div className="form-grid" style={{ gridTemplateColumns: "2fr 1fr", marginBottom: 14 }}>
-                  <div className="form-group">
-                    <label htmlFor="svcName">Service Name *</label>
+              <div className="space-y-4 px-6 py-5">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Service Name *
+                    </label>
                     <input
-                      id="svcName"
                       type="text"
-                      value={form.name}
-                      onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                      placeholder="e.g. Aadhaar Print"
                       required
+                      value={form.name}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, name: e.target.value }))
+                      }
+                      placeholder="e.g. Aadhaar Print"
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm",
+                        "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      )}
                     />
                   </div>
-                  <div className="form-group">
-                    <label htmlFor="svcCat">Category</label>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Category
+                    </label>
                     <select
-                      id="svcCat"
                       value={form.category}
-                      onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, category: e.target.value }))
+                      }
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm",
+                        "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      )}
                     >
-                      {SERVICE_CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
+                      {SERVICE_CATEGORIES.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
                       ))}
                     </select>
                   </div>
                 </div>
-                <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                  <div className="form-group">
-                    <label htmlFor="svcPrice">Default Price (₹) *</label>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Default Price (₹) *
+                    </label>
                     <input
-                      id="svcPrice"
                       type="number"
+                      required
                       min="0"
                       step="0.01"
                       value={form.defaultPrice}
-                      onChange={(e) => setForm((p) => ({ ...p, defaultPrice: Number(e.target.value) }))}
-                      required
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          defaultPrice: Number(e.target.value),
+                        }))
+                      }
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm",
+                        "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      )}
                     />
                   </div>
-                  <div className="form-group">
-                    <label htmlFor="svcTax">Tax Rate (%)</label>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Tax Rate (%)
+                    </label>
                     <input
-                      id="svcTax"
                       type="number"
                       min="0"
                       max="100"
                       step="0.01"
                       value={form.taxRate}
-                      onChange={(e) => setForm((p) => ({ ...p, taxRate: Number(e.target.value) }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          taxRate: Number(e.target.value),
+                        }))
+                      }
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm",
+                        "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      )}
                     />
                   </div>
                 </div>
-                <div className="form-group mt-16" style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <input
-                    id="svcActive"
-                    type="checkbox"
-                    checked={form.isActive}
-                    onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))}
-                    style={{ width: "auto", cursor: "pointer" }}
-                  />
-                  <label htmlFor="svcActive" style={{ cursor: "pointer" }}>
-                    Active (shown on billing page)
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                    Search Keywords
                   </label>
-                </div>
-                <div className="form-group mt-16">
-                  <label htmlFor="svcKeywords">Keywords (Aliases for Search)</label>
                   <input
-                    id="svcKeywords"
                     type="text"
                     value={form.keywords}
-                    onChange={(e) => setForm((p) => ({ ...p, keywords: e.target.value }))}
-                    placeholder="e.g. pan, nsdl, uti"
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, keywords: e.target.value }))
+                    }
+                    placeholder="e.g. aadhaar, aadhar, uid"
+                    className={cn(
+                      "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm",
+                      "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    )}
                   />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Comma-separated aliases for fuzzy search
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={form.isActive}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, isActive: e.target.checked }))
+                      }
+                      className="h-4 w-4 rounded border-border accent-primary"
+                    />
+                    <span className="text-sm font-medium text-foreground">
+                      Active
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={form.isBookmarked}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          isBookmarked: e.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-border accent-primary"
+                    />
+                    <span className="text-sm font-medium text-foreground">
+                      Show on Dashboard
+                    </span>
+                  </label>
                 </div>
               </div>
-              <div className="modal-footer">
+
+              <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
                 <button
                   type="button"
-                  className="btn btn-ghost"
                   onClick={() => setShowModal(false)}
+                  className="rounded-lg border border-border px-4 py-2 text-[13px] font-medium text-foreground hover:bg-background"
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? "Saving…" : editingId ? "Update Service" : "Add Service"}
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className={cn(
+                    "rounded-lg bg-primary px-5 py-2 text-[13px] font-semibold text-white",
+                    "hover:bg-primary-dark disabled:opacity-50"
+                  )}
+                >
+                  {saving
+                    ? "Saving..."
+                    : editingId
+                      ? "Update Service"
+                      : "Add Service"}
                 </button>
               </div>
             </form>

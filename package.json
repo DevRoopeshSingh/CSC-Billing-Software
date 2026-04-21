@@ -1,48 +1,55 @@
 {
   "name": "csc-center-billing-software",
   "version": "0.1.0",
-  "main": "electron/main.js",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio",
-    "db:generate": "prisma generate",
-    "electron:dev": "npm run rebuild:electron && concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "npm run rebuild:electron && npm run build && electron-builder build --mac --win",
-    "rebuild:electron": "electron-rebuild -f -w node-thermal-printer,better-sqlite3",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "db:push:drizzle": "drizzle-kit push",
-    "db:generate:drizzle": "drizzle-kit generate"
+    "db:generate:drizzle": "drizzle-kit generate",
+    "electron:compile": "node scripts/build-electron.mjs",
+    "electron:dev": "npm run electron:compile && npm run rebuild:electron && concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "npm run electron:compile && npm run rebuild:electron && npm run build && electron-builder build --mac --win",
+    "rebuild:electron": "electron-rebuild -f -w node-thermal-printer,better-sqlite3"
   },
   "build": {
     "appId": "com.csc.billing",
     "productName": "CSC Billing",
-    "asar": false,
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*",
+      "**/node_modules/node-thermal-printer/**/*"
+    ],
     "directories": {
-      "output": "dist_electron"
+      "output": "dist_electron",
+      "buildResources": "build"
     },
     "files": [
-      ".next/**/*",
-      "node_modules/**/*",
-      "electron/**/*",
-      "src/main/**/*",
-      "src/db/**/*",
-      "src/shared/**/*",
-      "package.json",
-      "public/**/*",
-      "prisma/**/*"
+      ".next/standalone/**/*",
+      {
+        "from": ".next/static",
+        "to": ".next/standalone/.next/static"
+      },
+      {
+        "from": "public",
+        "to": ".next/standalone/public"
+      },
+      "dist-electron/**/*",
+      "package.json"
     ],
+    "afterPack": "scripts/after-pack.mjs",
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "build/icon.icns"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
     }
   },
   "dependencies": {
-    "@prisma/client": "^5.13.0",
     "@types/recharts": "^1.8.29",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.7.0",
@@ -62,6 +69,8 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.0",
+    "@eslint/js": "^9.17.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^20",
@@ -74,13 +83,15 @@
     "electron": "^41.0.3",
     "electron-builder": "^26.8.1",
     "electron-rebuild": "^3.2.9",
+    "esbuild": "^0.24.0",
     "eslint": "^9",
-    "eslint-config-next": "^16.2.4",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.1.0",
     "postcss": "^8.4.49",
-    "prisma": "^5.13.0",
     "tailwindcss": "^3.4.17",
     "ts-node": "^10.9.2",
     "typescript": "^5",
+    "typescript-eslint": "^8.18.0",
     "uuid": "^13.0.0",
     "wait-on": "^9.0.4"
   }

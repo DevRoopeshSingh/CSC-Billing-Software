@@ -1,258 +1,436 @@
+// src/app/page.tsx
+"use client";
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
-import DashboardCharts from "./DashboardCharts";
+import { ipc } from "@/lib/ipc";
+import { IPC } from "@/shared/ipc-channels";
+import { useToast } from "@/components/Toast";
+import BookmarkedServices from "@/components/BookmarkedServices";
+import type { Customer, Service, InvoiceDetail } from "@/shared/types";
+import {
+  IndianRupee,
+  Users,
+  FileWarning,
+  Briefcase,
+  FilePlus,
+  UserPlus,
+  BarChart3,
+  HardDrive,
+  ArrowUpRight,
+  Clock,
+  TrendingUp,
+} from "lucide-react";
 
-export const dynamic = "force-dynamic";
-
-async function getStats() {
-  try {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const [customerCount, serviceCount, invoiceCount, recentInvoices, todayInvoices, centerProfile] =
-    await Promise.all([
-      prisma.customer.count(),
-      prisma.service.count({ where: { isActive: true } }),
-      prisma.invoice.count(),
-      prisma.invoice.findMany({
-        take: 5,
-        orderBy: { createdAt: "desc" },
-        include: { customer: true },
-      }),
-      prisma.invoice.findMany({
-        where: { createdAt: { gte: today }, status: { not: "CANCELLED" } },
-        select: { total: true, paymentMode: true },
-      }),
-      prisma.centerProfile.findUnique({ where: { id: 1 } }),
-    ]);
-
-  const totalRevenue = await prisma.invoice.aggregate({
-    where: { status: { not: "CANCELLED" } },
-    _sum: { total: true },
-  });
-
-  const todayRevenue = todayInvoices.reduce((sum, inv) => sum + inv.total, 0);
-
-  // Revenue By Day (Last 7 Days)
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  sevenDaysAgo.setHours(0, 0, 0, 0);
-
-  const recentRevenueInvoices = await prisma.invoice.findMany({
-    where: { createdAt: { gte: sevenDaysAgo }, status: { not: "CANCELLED" } },
-    select: { createdAt: true, total: true },
-  });
-
-  const revenueMap: Record<string, number> = {};
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(sevenDaysAgo);
-    d.setDate(d.getDate() + i);
-    revenueMap[d.toLocaleDateString("en-IN", { month: "short", day: "numeric" })] = 0;
-  }
-
-  recentRevenueInvoices.forEach(inv => {
-    const d = inv.createdAt.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
-    if (revenueMap[d] !== undefined) revenueMap[d] += inv.total;
-  });
-
-  const revenueData = Object.entries(revenueMap).map(([date, total]) => ({ date, total }));
-
-  // Payment Modes Today
-  const paymentMap = todayInvoices.reduce((acc, inv) => {
-    acc[inv.paymentMode] = (acc[inv.paymentMode] || 0) + inv.total;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const paymentData = Object.entries(paymentMap).map(([name, value]) => ({ name, value }));
-
-  return {
-    customerCount,
-    serviceCount,
-    invoiceCount,
-    recentInvoices,
-    totalRevenue: totalRevenue._sum.total ?? 0,
-    todayRevenue,
-    todayInvoiceCount: todayInvoices.length,
-    revenueData,
-    paymentData,
-    lastBackupDate: centerProfile?.lastBackupDate ?? null,
-  };
-  } catch (e) {
-    console.error("Dashboard: failed to load stats", e);
-    return {
-      customerCount: 0, serviceCount: 0, invoiceCount: 0,
-      recentInvoices: [], totalRevenue: 0, todayRevenue: 0,
-      todayInvoiceCount: 0, revenueData: [], paymentData: [],
-      lastBackupDate: null,
-    };
-  }
+interface DashboardStats {
+  todayRevenue: number;
+  todayInvoiceCount: number;
+  totalCustomers: number;
+  pendingInvoices: number;
+  activeServices: number;
+  totalRevenue: number;
+  recentInvoices: Array<{
+    id: number;
+    invoiceNo: string;
+    customerName: string;
+    total: number;
+    status: string;
+    createdAt: string | Date;
+  }>;
 }
 
-export default async function HomePage() {
-  try {
-    const profile = await prisma.centerProfile.findUnique({ where: { id: 1 } });
-    if (!profile || !profile.centerName) {
-      redirect("/wizard");
-    }
-  } catch (e) {
-    // DB not accessible (Vercel build or fresh install) — redirect to wizard
-    redirect("/wizard");
-  }
+const EMPTY_STATS: DashboardStats = {
+  todayRevenue: 0,
+  todayInvoiceCount: 0,
+  totalCustomers: 0,
+  pendingInvoices: 0,
+  activeServices: 0,
+  totalRevenue: 0,
+  recentInvoices: [],
+};
 
-  const stats = await getStats();
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  accent = "teal",
+}: {
+  label: string;
+  value: string;
+  icon: React.ElementType;
+  accent?: "teal" | "blue" | "amber" | "emerald";
+}) {
+  const accentMap = {
+    teal: "bg-teal-50 text-teal-600",
+    blue: "bg-blue-50 text-blue-600",
+    amber: "bg-amber-50 text-amber-600",
+    emerald: "bg-emerald-50 text-emerald-600",
+  };
 
   return (
-    <div>
-      <div className="page-header">
-        <h2>Dashboard</h2>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <Link href="/reports" className="btn btn-ghost">
-            📊 Reports
-          </Link>
-          <a href="/api/export/csv" target="_blank" rel="noopener noreferrer" className="btn btn-ghost">
-            ⬇ Export CSV
-          </a>
-          <Link href="/billing/new" className="btn btn-primary">
-            + New Bill
-          </Link>
-        </div>
-      </div>
-
-      <DashboardCharts revenueData={stats.revenueData} paymentData={stats.paymentData} />
-
-      {/* Backup Reminder */}
-      {(!stats.lastBackupDate || new Date().getTime() - new Date(stats.lastBackupDate).getTime() > 7 * 24 * 60 * 60 * 1000) && (
-        <div className="alert alert-error no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span>
-            <strong>Backup Reminder:</strong> You haven&apos;t backed up your data recently. Protect your records!
-          </span>
-          <Link href="/settings/backup" className="btn btn-danger btn-sm">
-            Backup Now
-          </Link>
-        </div>
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-card p-6",
+        "shadow-sm transition-shadow hover:shadow-md"
       )}
-
-      {/* Stats Grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          gap: "20px",
-          marginBottom: "32px",
-        }}
-      >
-        <StatCard
-          label="Today's Revenue"
-          value={formatCurrency(stats.todayRevenue)}
-        />
-        <StatCard
-          label="Today's Bills"
-          value={String(stats.todayInvoiceCount)}
-        />
-        <StatCard
-          label="Total Revenue"
-          value={formatCurrency(stats.totalRevenue)}
-        />
-        <StatCard
-          label="Total Customers"
-          value={String(stats.customerCount)}
-        />
-      </div>
-
-      {/* Recent Invoices */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-16">
-          <h3 style={{ fontSize: 16, fontWeight: 600 }}>Recent Invoices</h3>
-        </div>
-        {stats.recentInvoices.length === 0 ? (
-          <p className="text-muted text-center" style={{ padding: "32px 0" }}>
-            No invoices yet.{" "}
-            <Link href="/billing/new" style={{ color: "#1a56db" }}>
-              Create your first bill →
-            </Link>
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {label}
           </p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Invoice #</th>
-                  <th>Customer</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                  <th>Payment</th>
-                  <th className="text-right">Total</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.recentInvoices.map((inv) => (
-                  <tr key={inv.id}>
-                    <td>
-                      <span className="badge badge-teal">
-                        INV-{String(inv.id).padStart(4, "0")}
-                      </span>
-                    </td>
-                    <td>{inv.customer.name}</td>
-                    <td>
-                      <span className={`badge ${inv.status === "PAID" ? "badge-green" : inv.status === "CANCELLED" ? "badge-red" : "badge-yellow"}`}>
-                        {inv.status}
-                      </span>
-                    </td>
-                    <td>
-                      {formatDate(inv.createdAt)}
-                    </td>
-                    <td>{inv.paymentMode}</td>
-                    <td className="text-right" style={{ fontWeight: 600 }}>
-                      {formatCurrency(inv.total)}
-                    </td>
-                    <td className="text-right">
-                      <a href={`/invoice/${inv.id}?print=true`} target="_blank" className="btn btn-ghost btn-sm" style={{ marginRight: 8, padding: "5px 8px" }} title="Print Directly">
-                        🖨️
-                      </a>
-                      <Link href={`/invoice/${inv.id}`} className="btn btn-ghost btn-sm">
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          <p className="mt-3 text-3xl font-bold text-foreground">{value}</p>
+        </div>
+        <div className={cn("rounded-xl p-3", accentMap[accent])}>
+          <Icon className="h-6 w-6" />
+        </div>
       </div>
     </div>
   );
 }
 
-function StatCard({
+function QuickAction({
+  href,
   label,
-  value,
+  description,
+  icon: Icon,
+  variant = "default",
 }: {
+  href: string;
   label: string;
-  value: string;
+  description: string;
+  icon: React.ElementType;
+  variant?: "default" | "primary";
 }) {
   return (
-    <div
-      className="card"
-      style={{
-        marginBottom: 0,
-        padding: "24px",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        border: "1px solid var(--border)",
-        boxShadow: "var(--shadow-sm)"
-      }}
+    <Link
+      href={href}
+      className={cn(
+        "group flex items-center gap-4 rounded-xl border p-5 transition-all",
+        variant === "primary"
+          ? "border-primary/20 bg-primary/5 hover:border-primary hover:bg-primary/10"
+          : "border-border bg-card hover:border-primary/40 hover:shadow-sm"
+      )}
     >
-      <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em" }}>
-        {label}
-      </p>
-      <p style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", marginTop: 12 }}>
-        {value}
-      </p>
+      <div
+        className={cn(
+          "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors",
+          variant === "primary"
+            ? "bg-primary text-white"
+            : "bg-background text-muted-foreground group-hover:bg-primary group-hover:text-white"
+        )}
+      >
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-foreground">{label}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+      </div>
+      <ArrowUpRight
+        className={cn(
+          "h-4 w-4 text-muted-foreground opacity-0 transition-all",
+          "group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+        )}
+      />
+    </Link>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    PAID: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    PENDING: "bg-amber-50 text-amber-700 border-amber-200",
+    CANCELLED: "bg-red-50 text-red-700 border-red-200",
+  };
+
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+        styles[status] ?? "bg-gray-50 text-gray-600 border-gray-200"
+      )}
+    >
+      {status}
+    </span>
+  );
+}
+
+export default function DashboardPage() {
+  const { toast } = useToast();
+  const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [invoices, customers, services] = await Promise.all([
+          ipc<InvoiceDetail[]>(IPC.INVOICES_LIST),
+          ipc<Customer[]>(IPC.CUSTOMERS_LIST),
+          ipc<Service[]>(IPC.SERVICES_LIST),
+        ]);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const todayInvoices = (invoices ?? []).filter((i) => {
+          const d = new Date(i.createdAt ?? 0);
+          return d >= today;
+        });
+
+        setStats({
+          todayRevenue: todayInvoices.reduce((s, i) => s + (i.total ?? 0), 0),
+          todayInvoiceCount: todayInvoices.length,
+          totalCustomers: (customers ?? []).length,
+          pendingInvoices: (invoices ?? []).filter((i) => i.status === "PENDING")
+            .length,
+          activeServices: (services ?? []).filter((s) => s.isActive).length,
+          totalRevenue: (invoices ?? []).reduce(
+            (s, i) => s + (i.total ?? 0),
+            0
+          ),
+          recentInvoices: (invoices ?? []).slice(0, 8).map((i) => ({
+            id: i.id!,
+            invoiceNo: i.invoiceNo,
+            customerName: i.customer?.name ?? "—",
+            total: i.total,
+            status: i.status,
+            createdAt: i.createdAt ?? new Date(),
+          })),
+        });
+      } catch {
+        toast("Unable to load dashboard data", "error");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [toast]);
+
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return "Good Morning";
+    if (h < 17) return "Good Afternoon";
+    return "Good Evening";
+  })();
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-end justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">{greeting}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Here&apos;s what&apos;s happening at your center today
+          </p>
+        </div>
+        <div className="flex gap-2.5">
+          <Link
+            href="/reports"
+            className={cn(
+              "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5",
+              "text-[13px] font-medium text-foreground transition-colors hover:bg-background"
+            )}
+          >
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            Reports
+          </Link>
+          <Link
+            href="/billing/new"
+            className={cn(
+              "flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5",
+              "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
+            )}
+          >
+            <FilePlus className="h-4 w-4" />
+            New Invoice
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Today's Collection"
+          value={loading ? "—" : formatCurrency(stats.todayRevenue)}
+          icon={IndianRupee}
+          accent="teal"
+        />
+        <StatCard
+          label="Total Customers"
+          value={loading ? "—" : String(stats.totalCustomers)}
+          icon={Users}
+          accent="blue"
+        />
+        <StatCard
+          label="Pending Invoices"
+          value={loading ? "—" : String(stats.pendingInvoices)}
+          icon={FileWarning}
+          accent="amber"
+        />
+        <StatCard
+          label="Active Services"
+          value={loading ? "—" : String(stats.activeServices)}
+          icon={Briefcase}
+          accent="emerald"
+        />
+      </div>
+
+      <BookmarkedServices />
+
+      <div>
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Quick Actions
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <QuickAction
+            href="/billing/new"
+            label="Create Invoice"
+            description="Bill a customer for services"
+            icon={FilePlus}
+            variant="primary"
+          />
+          <QuickAction
+            href="/customers"
+            label="Add Customer"
+            description="Register a new customer"
+            icon={UserPlus}
+          />
+          <QuickAction
+            href="/reports"
+            label="View Reports"
+            description="Revenue and analytics"
+            icon={BarChart3}
+          />
+          <QuickAction
+            href="/settings/backup"
+            label="Backup Data"
+            description="Export database backup"
+            icon={HardDrive}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">
+              Revenue Overview
+            </h3>
+          </div>
+          <div className="mt-6 space-y-4">
+            <div className="flex items-end justify-between border-b border-border pb-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Today</p>
+                <p className="mt-1 text-xl font-bold text-foreground">
+                  {loading ? "—" : formatCurrency(stats.todayRevenue)}
+                </p>
+              </div>
+              <span className="text-xs font-medium text-muted-foreground">
+                {loading ? "—" : `${stats.todayInvoiceCount} invoices`}
+              </span>
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">All Time</p>
+                <p className="mt-1 text-xl font-bold text-foreground">
+                  {loading ? "—" : formatCurrency(stats.totalRevenue)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card shadow-sm lg:col-span-2">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold text-foreground">
+                Recent Invoices
+              </h3>
+            </div>
+            <Link
+              href="/invoices"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              View All
+            </Link>
+          </div>
+
+          {loading ? (
+            <div className="flex h-48 items-center justify-center">
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            </div>
+          ) : stats.recentInvoices.length === 0 ? (
+            <div className="flex h-48 flex-col items-center justify-center gap-3">
+              <FileWarning className="h-10 w-10 text-muted-foreground/40" />
+              <div className="text-center">
+                <p className="text-sm font-medium text-muted-foreground">
+                  No invoices yet
+                </p>
+                <Link
+                  href="/billing/new"
+                  className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
+                >
+                  Create your first invoice
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left">
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Invoice
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Customer
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Amount
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.recentInvoices.map((inv) => (
+                    <tr
+                      key={inv.id}
+                      className="border-b border-border/50 last:border-0 hover:bg-background/60"
+                    >
+                      <td className="px-6 py-3.5">
+                        <Link
+                          href={`/invoices/${inv.id}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {inv.invoiceNo}
+                        </Link>
+                      </td>
+                      <td className="px-6 py-3.5 text-foreground">
+                        {inv.customerName}
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <StatusBadge status={inv.status} />
+                      </td>
+                      <td className="px-6 py-3.5 text-muted-foreground">
+                        {formatDate(inv.createdAt)}
+                      </td>
+                      <td className="px-6 py-3.5 text-right font-semibold text-foreground">
+                        {formatCurrency(inv.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

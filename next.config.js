@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
-  experimental: {},
+  serverExternalPackages: ["better-sqlite3", "drizzle-orm"],
 };
 
 module.exports = nextConfig;
