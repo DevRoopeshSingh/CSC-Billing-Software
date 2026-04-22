@@ -61,5 +61,11 @@ coverage/
 # ── Misc ────────────────────────────────────────────────────────────────────
 .vercel
 .turbo
-dist-electron/
 .claude/
+
+# ── Electron build artifacts ───────────────────────────────────────────
+dist-electron/
+dist_electron/
+
+# ── Native module build ──────────────────────────────────────────────────
+.gyp.json

@@ -52,7 +52,7 @@
   "dependencies": {
     "@types/recharts": "^1.8.29",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
