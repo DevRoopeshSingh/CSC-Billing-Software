@@ -15,7 +15,38 @@ import {
   Phone,
   Tag,
   MessageSquare,
+  Pencil,
+  Trash2,
 } from "lucide-react";
+
+type FormState = {
+  name: string;
+  mobile: string;
+  email: string;
+  address: string;
+  remarks: string;
+  tags: string;
+};
+
+const EMPTY_FORM: FormState = {
+  name: "",
+  mobile: "",
+  email: "",
+  address: "",
+  remarks: "",
+  tags: "",
+};
+
+function toForm(c: Customer): FormState {
+  return {
+    name: c.name ?? "",
+    mobile: c.mobile ?? "",
+    email: c.email ?? "",
+    address: c.address ?? "",
+    remarks: c.remarks ?? "",
+    tags: c.tags ?? "",
+  };
+}
 
 export default function CustomersPage() {
   const { toast } = useToast();
@@ -23,15 +54,14 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    mobile: "",
-    email: "",
-    address: "",
-    remarks: "",
-  });
+  const [modal, setModal] = useState<
+    | { mode: "add" }
+    | { mode: "edit"; customer: Customer }
+    | null
+  >(null);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const loadCustomers = useCallback(
     async (q: string) => {
@@ -59,29 +89,74 @@ export default function CustomersPage() {
     return () => clearTimeout(t);
   }, [search, loadCustomers]);
 
-  const handleAddCustomer = async (e: React.FormEvent) => {
+  const openAdd = () => {
+    setForm(EMPTY_FORM);
+    setModal({ mode: "add" });
+  };
+
+  const openEdit = (customer: Customer) => {
+    setForm(toForm(customer));
+    setModal({ mode: "edit", customer });
+  };
+
+  const closeModal = () => {
+    setModal(null);
+    setForm(EMPTY_FORM);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!modal) return;
     setSaving(true);
     try {
-      await ipc(IPC.CUSTOMERS_CREATE, {
-        name: form.name,
-        mobile: form.mobile,
-        email: form.email,
-        address: form.address,
-        remarks: form.remarks || null,
-        tags: "",
-      });
-      setShowAdd(false);
-      setForm({ name: "", mobile: "", email: "", address: "", remarks: "" });
-      toast("Customer added", "success");
+      const payload = {
+        name: form.name.trim(),
+        mobile: form.mobile.trim(),
+        email: form.email.trim(),
+        address: form.address.trim(),
+        remarks: form.remarks.trim() || null,
+        tags: form.tags.trim(),
+      };
+      if (modal.mode === "add") {
+        await ipc(IPC.CUSTOMERS_CREATE, payload);
+        toast("Customer added", "success");
+      } else {
+        await ipc(IPC.CUSTOMERS_UPDATE, modal.customer.id, payload);
+        toast("Customer updated", "success");
+      }
+      closeModal();
       loadCustomers(search);
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to add customer",
+        err instanceof IpcError ? err.message : "Failed to save customer",
         "error"
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async (customer: Customer) => {
+    if (!customer.id) return;
+    if (
+      !window.confirm(
+        `Delete ${customer.name}? Existing invoices for this customer will be kept but the customer record will be removed.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(customer.id);
+    try {
+      await ipc(IPC.CUSTOMERS_DELETE, customer.id);
+      toast("Customer deleted", "success");
+      loadCustomers(search);
+    } catch (err) {
+      toast(
+        err instanceof IpcError ? err.message : "Failed to delete customer",
+        "error"
+      );
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -105,7 +180,7 @@ export default function CustomersPage() {
             New Invoice
           </Link>
           <button
-            onClick={() => setShowAdd(true)}
+            onClick={openAdd}
             className={cn(
               "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
               "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
@@ -224,16 +299,42 @@ export default function CustomersPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <Link
-                        href={`/billing/new?customerId=${c.id}`}
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5",
-                          "text-xs font-medium text-foreground transition-colors hover:bg-background"
-                        )}
-                      >
-                        New Bill
-                      </Link>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Link
+                          href={`/billing/new?customerId=${c.id}`}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5",
+                            "text-xs font-medium text-foreground transition-colors hover:bg-background"
+                          )}
+                        >
+                          New Bill
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => openEdit(c)}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-lg border border-border p-1.5",
+                            "text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                          )}
+                          title="Edit"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(c)}
+                          disabled={deletingId === c.id}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 p-1.5",
+                            "text-red-700 transition-colors hover:bg-red-100",
+                            "disabled:opacity-50"
+                          )}
+                          title="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -243,10 +344,10 @@ export default function CustomersPage() {
         )}
       </div>
 
-      {showAdd && (
+      {modal && (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setShowAdd(false)}
+          onClick={closeModal}
         >
           <div
             className="w-full max-w-lg rounded-xl bg-card shadow-xl"
@@ -254,16 +355,16 @@ export default function CustomersPage() {
           >
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <h3 className="text-base font-bold text-foreground">
-                Add Customer
+                {modal.mode === "add" ? "Add Customer" : "Edit Customer"}
               </h3>
               <button
-                onClick={() => setShowAdd(false)}
+                onClick={closeModal}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-background"
               >
                 Esc
               </button>
             </div>
-            <form onSubmit={handleAddCustomer}>
+            <form onSubmit={handleSubmit}>
               <div className="space-y-4 px-6 py-5">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -336,28 +437,47 @@ export default function CustomersPage() {
                     )}
                   />
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-foreground">
-                    Remarks
-                  </label>
-                  <input
-                    type="text"
-                    value={form.remarks}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, remarks: e.target.value }))
-                    }
-                    placeholder="e.g. VIP, Regular"
-                    className={cn(
-                      "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm",
-                      "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    )}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Tags
+                    </label>
+                    <input
+                      type="text"
+                      value={form.tags}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, tags: e.target.value }))
+                      }
+                      placeholder="VIP, Regular (comma separated)"
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm",
+                        "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Remarks
+                    </label>
+                    <input
+                      type="text"
+                      value={form.remarks}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, remarks: e.target.value }))
+                      }
+                      placeholder="Free-form notes"
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm",
+                        "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      )}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
                 <button
                   type="button"
-                  onClick={() => setShowAdd(false)}
+                  onClick={closeModal}
                   className="rounded-lg border border-border px-4 py-2 text-[13px] font-medium text-foreground hover:bg-background"
                 >
                   Cancel
@@ -370,7 +490,11 @@ export default function CustomersPage() {
                     "hover:bg-primary-dark disabled:opacity-50"
                   )}
                 >
-                  {saving ? "Saving..." : "Add Customer"}
+                  {saving
+                    ? "Saving..."
+                    : modal.mode === "add"
+                      ? "Add Customer"
+                      : "Save Changes"}
                 </button>
               </div>
             </form>

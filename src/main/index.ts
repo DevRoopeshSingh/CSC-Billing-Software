@@ -20,6 +20,8 @@ import {
   InvoiceStatus,
 } from "../shared/types";
 import { scanForPrinters } from "./printerScan";
+import { generateInvoicePdf } from "./invoicePdf";
+import { printReceipt, printTestPage } from "./printerReceipt";
 
 // ── Paths ────────────────────────────────────────────────────────────────────
 const userDataPath = app.getPath("userData");
@@ -614,9 +616,57 @@ function registerIpcHandlers() {
     })();
     return { success: true };
   });
-  safeHandle(IPC.INVOICES_GENERATE_PDF, () => ({
-    error: "PDF generation not implemented yet",
-  }));
+  safeHandle(IPC.INVOICES_GENERATE_PDF, async (_e, rawId, rawOpts) => {
+    const id = z.number().int().positive().parse(rawId);
+    const opts = z
+      .object({ silent: z.boolean().optional() })
+      .optional()
+      .parse(rawOpts) ?? {};
+
+    const invoice = db.query.invoices
+      .findFirst({
+        where: eq(schema.invoices.id, id),
+        with: { customer: true, items: { with: { service: true } } },
+      })
+      .sync();
+    if (!invoice) throw new Error(`Invoice ${id} not found`);
+
+    const center =
+      db
+        .select()
+        .from(schema.centerProfiles)
+        .where(eq(schema.centerProfiles.id, 1))
+        .get() ?? null;
+
+    const safeName = invoice.invoiceNo.replace(/[^A-Za-z0-9_-]/g, "_");
+    const defaultPath = path.join(
+      app.getPath("downloads"),
+      `${safeName}.pdf`
+    );
+
+    let outPath = defaultPath;
+    if (!opts.silent && mainWindow) {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: "Save Invoice PDF",
+        defaultPath,
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      });
+      if (result.canceled || !result.filePath) {
+        return { cancelled: true };
+      }
+      outPath = result.filePath;
+    }
+
+    await generateInvoicePdf(invoice, center, outPath);
+
+    // Stamp printedAt so the list reflects that the invoice has been produced.
+    db.update(schema.invoices)
+      .set({ printedAt: new Date() })
+      .where(eq(schema.invoices.id, id))
+      .run();
+
+    return { path: outPath };
+  });
 
   // Reports
   safeHandle(IPC.REPORTS_DAILY, (_e, dateStr) => {
@@ -668,12 +718,32 @@ function registerIpcHandlers() {
     return { success: true };
   });
   safeHandle(IPC.PRINTER_LIST, () => scanForPrinters());
-  safeHandle(IPC.PRINTER_TEST, () => ({
-    error: "Printer test not implemented yet",
-  }));
-  safeHandle(IPC.PRINTER_PRINT_RECEIPT, () => ({
-    error: "Printer receipt not implemented yet",
-  }));
+  safeHandle(IPC.PRINTER_TEST, async () => {
+    await printTestPage(printerConfig);
+    return { success: true };
+  });
+  safeHandle(IPC.PRINTER_PRINT_RECEIPT, async (_e, rawId) => {
+    const id = z.number().int().positive().parse(rawId);
+    const invoice = db.query.invoices
+      .findFirst({
+        where: eq(schema.invoices.id, id),
+        with: { customer: true, items: { with: { service: true } } },
+      })
+      .sync();
+    if (!invoice) throw new Error(`Invoice ${id} not found`);
+    const center =
+      db
+        .select()
+        .from(schema.centerProfiles)
+        .where(eq(schema.centerProfiles.id, 1))
+        .get() ?? null;
+    await printReceipt(printerConfig, invoice, center);
+    db.update(schema.invoices)
+      .set({ printedAt: new Date() })
+      .where(eq(schema.invoices.id, id))
+      .run();
+    return { success: true };
+  });
 
   // Backup
   safeHandle(IPC.BACKUP_EXPORT, () => {
