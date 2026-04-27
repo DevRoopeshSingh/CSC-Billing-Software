@@ -14,10 +14,14 @@ import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
 
 type ToastKind = "success" | "error" | "info";
 
+const MAX_VISIBLE_TOASTS = 4;
+const DEDUP_WINDOW_MS = 6000;
+
 interface ToastItem {
   id: number;
   kind: ToastKind;
   message: string;
+  count: number;
 }
 
 interface ToastContextValue {
@@ -41,10 +45,41 @@ export function useToast() {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const idRef = useRef(0);
+  // Track last shown timestamp per (kind|message) for dedup.
+  const lastShownRef = useRef<Map<string, number>>(new Map());
 
   const toast = useCallback((message: string, kind: ToastKind = "info") => {
+    const key = `${kind}|${message}`;
+    const now = Date.now();
+    const last = lastShownRef.current.get(key) ?? 0;
+
+    // If the same toast fired within the dedup window, just bump the
+    // existing entry's counter instead of adding another card.
+    if (now - last < DEDUP_WINDOW_MS) {
+      setItems((list) => {
+        const idx = list.findIndex(
+          (t) => t.kind === kind && t.message === message
+        );
+        if (idx >= 0) {
+          const next = list.slice();
+          next[idx] = { ...next[idx], count: next[idx].count + 1 };
+          return next;
+        }
+        return list;
+      });
+      lastShownRef.current.set(key, now);
+      return;
+    }
+
+    lastShownRef.current.set(key, now);
     const id = ++idRef.current;
-    setItems((list) => [...list, { id, kind, message }]);
+    setItems((list) => {
+      const next = [...list, { id, kind, message, count: 1 }];
+      // Cap visible count by dropping the oldest.
+      return next.length > MAX_VISIBLE_TOASTS
+        ? next.slice(next.length - MAX_VISIBLE_TOASTS)
+        : next;
+    });
     setTimeout(() => {
       setItems((list) => list.filter((t) => t.id !== id));
     }, 4000);
@@ -75,7 +110,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               )}
             >
               <Icon className="mt-0.5 h-4 w-4 shrink-0" />
-              <p className="flex-1 text-sm font-medium">{t.message}</p>
+              <p className="flex-1 text-sm font-medium">
+                {t.message}
+                {t.count > 1 && (
+                  <span className="ml-2 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-bold">
+                    ×{t.count}
+                  </span>
+                )}
+              </p>
               <button
                 type="button"
                 onClick={() => dismiss(t.id)}

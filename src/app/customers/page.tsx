@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Pencil,
   Trash2,
+  FileText,
 } from "lucide-react";
 
 type FormState = {
@@ -233,6 +234,12 @@ export default function CustomersPage() {
                   <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Tags / Remarks
                   </th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right">
+                    Total Invoices
+                  </th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right">
+                    Total Billed
+                  </th>
                   <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Actions
                   </th>
@@ -255,9 +262,12 @@ export default function CustomersPage() {
                           {c.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-semibold text-foreground">
+                          <Link 
+                            href={`/invoices?customerId=${c.id}`}
+                            className="font-semibold text-foreground hover:text-primary hover:underline"
+                          >
                             {c.name}
-                          </p>
+                          </Link>
                           {c.email && (
                             <p className="mt-0.5 text-xs text-muted-foreground">
                               {c.email}
@@ -298,6 +308,18 @@ export default function CustomersPage() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <Link 
+                        href={`/invoices?customerId=${c.id}`}
+                        className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                      >
+                        <FileText className="h-3 w-3" />
+                        {c.invoiceCount ?? 0}
+                      </Link>
+                    </td>
+                    <td className="px-6 py-4 text-right font-medium text-emerald-600">
+                      ₹{(c.totalBilled ?? 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1.5">

@@ -1,5 +1,6 @@
 // src/shared/types.ts
 import { z } from "zod";
+import { SERVICE_CATEGORIES } from "../config/categories";
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 export const PaymentMode = z.enum(["Cash", "UPI", "Card", "Other"]);
@@ -34,23 +35,65 @@ export const centerProfileSchema = z.object({
   pinHash: z.string().nullable().default(null),
   operatingHours: z.string().default(""),
   centerDescription: z.string().default(""),
+  printerInterface: z.string().default("tcp://192.168.1.100:9100"),
+  printerType: z.string().default("EPSON"),
+  printUpiQr: z.boolean().default(false),
 });
 
 export type CenterProfile = z.infer<typeof centerProfileSchema>;
 
 // ─── Service ─────────────────────────────────────────────────────────────────
+export const ServiceCategoryEnum = z.enum(
+  SERVICE_CATEGORIES as unknown as [string, ...string[]]
+);
+
 export const serviceSchema = z.object({
   id: z.number().int().positive().optional(),
   name: z.string().min(1, "Service name is required"),
-  category: z.string().default("Other"),
+  category: ServiceCategoryEnum.default("Other Services"),
+  subcategory: z.string().default(""),
   defaultPrice: z.number().nonnegative().default(0),
   taxRate: z.number().nonnegative().max(100).default(0),
+  priceIsStartingFrom: z.boolean().default(false),
+  sortOrder: z.number().int().nonnegative().default(0),
+  notes: z.string().default(""),
   isActive: z.boolean().default(true),
   isBookmarked: z.boolean().default(false),
   keywords: z.string().default(""),
 });
 
 export type Service = z.infer<typeof serviceSchema>;
+
+// ─── Service catalogue CSV import ────────────────────────────────────────────
+export const servicesImportSchema = z.object({
+  csv: z.string().min(1),
+  mode: z.enum(["preview", "commit"]),
+});
+
+export type ServicesImportRequest = z.infer<typeof servicesImportSchema>;
+
+export interface ServicesImportSeedRow {
+  name: string;
+  category: string;
+  subcategory: string;
+  defaultPrice: number;
+  taxRate: number;
+  priceIsStartingFrom: boolean;
+  sortOrder: number;
+  keywords: string;
+  notes: string;
+  isActive: boolean;
+  isBookmarked: boolean;
+}
+
+export interface ServicesImportResult {
+  added: ServicesImportSeedRow[];
+  updated: { before: Service; after: ServicesImportSeedRow }[];
+  unchanged: number;
+  skipped: { row: number; reason: string }[];
+  totals: { rowsRead: number; willAdd: number; willUpdate: number };
+  committed: boolean;
+}
 
 // ─── Customer ────────────────────────────────────────────────────────────────
 export const customerSchema = z.object({
@@ -63,7 +106,10 @@ export const customerSchema = z.object({
   tags: z.string().default(""),
 });
 
-export type Customer = z.infer<typeof customerSchema>;
+export type Customer = z.infer<typeof customerSchema> & {
+  invoiceCount?: number;
+  totalBilled?: number;
+};
 
 // ─── Invoice Item ────────────────────────────────────────────────────────────
 export const invoiceItemSchema = z.object({
@@ -158,6 +204,57 @@ export const serviceChecklistSchema = z.object({
 });
 
 export type ServiceChecklistItem = z.infer<typeof serviceChecklistSchema>;
+
+// Replace-all upsert for a service's checklist. Items without an id are
+// inserted; items with an id existing in the DB are updated; existing rows
+// not present in the payload are deleted. All in one transaction.
+export const checklistUpsertBulkSchema = z.object({
+  serviceId: z.number().int().positive(),
+  items: z.array(
+    z.object({
+      id: z.number().int().positive().optional(),
+      documentName: z.string().min(1),
+      isRequired: z.boolean().default(true),
+      notes: z.string().default(""),
+      sortOrder: z.number().int().nonnegative().default(0),
+    })
+  ),
+});
+
+export type ChecklistUpsertBulkRequest = z.infer<
+  typeof checklistUpsertBulkSchema
+>;
+
+// ─── Bulk service updates ────────────────────────────────────────────────────
+export const bulkUpdateServicesSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(500),
+  patch: z
+    .object({
+      isActive: z.boolean().optional(),
+      isBookmarked: z.boolean().optional(),
+    })
+    .refine(
+      (p) => p.isActive !== undefined || p.isBookmarked !== undefined,
+      "patch must set at least one field"
+    ),
+});
+
+export type BulkUpdateServicesRequest = z.infer<
+  typeof bulkUpdateServicesSchema
+>;
+
+export const bulkDeleteServicesSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(500),
+});
+
+export type BulkDeleteServicesRequest = z.infer<
+  typeof bulkDeleteServicesSchema
+>;
+
+export interface BulkDeleteServicesResult {
+  deleted: number;
+  skippedInUse: number[];
+}
 
 // ─── Lead ────────────────────────────────────────────────────────────────────
 export const leadSchema = z.object({

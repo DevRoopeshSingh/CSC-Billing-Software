@@ -6,23 +6,39 @@
 
 import type { IpcChannel } from "@/shared/ipc-channels";
 
+export const BRIDGE_UNAVAILABLE_CODE = "IPC_BRIDGE_UNAVAILABLE";
+
 export class IpcError extends Error {
   channel: string;
-  constructor(channel: string, message: string) {
+  code?: string;
+  constructor(channel: string, message: string, code?: string) {
     super(message);
     this.name = "IpcError";
     this.channel = channel;
+    this.code = code;
   }
+}
+
+export function isBridgeAvailable(): boolean {
+  return typeof window !== "undefined" && Boolean(window.ipc);
+}
+
+export function isBridgeMissingError(err: unknown): err is IpcError {
+  return err instanceof IpcError && err.code === BRIDGE_UNAVAILABLE_CODE;
 }
 
 export async function ipc<T = unknown>(
   channel: IpcChannel,
   ...args: unknown[]
 ): Promise<T> {
-  if (typeof window === "undefined" || !window.ipc) {
-    throw new IpcError(channel, "IPC bridge not available");
+  if (!isBridgeAvailable()) {
+    throw new IpcError(
+      channel,
+      "IPC bridge not available — open the desktop app instead of the browser preview.",
+      BRIDGE_UNAVAILABLE_CODE
+    );
   }
-  const result = (await window.ipc.invoke(channel, ...args)) as
+  const result = (await window.ipc!.invoke(channel, ...args)) as
     | T
     | { error: string };
   if (

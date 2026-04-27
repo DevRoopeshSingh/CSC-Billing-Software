@@ -26,9 +26,10 @@ import {
   Phone,
   Mail,
   MapPin,
-  FileText,
   ChevronDown,
   Loader2,
+  Pencil,
+  FileText,
 } from "lucide-react";
 
 const STATUS_CLASSES: Record<InvoiceStatus, string> = {
@@ -245,6 +246,19 @@ export default function InvoiceDetailPage() {
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2" />
           </div>
+
+          {invoice.status === "PENDING" && (
+            <Link
+              href={`/invoices/${invoice.id}/edit`}
+              className={cn(
+                "flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2",
+                "text-[13px] font-medium text-primary transition-colors hover:bg-primary/20"
+              )}
+            >
+              <Pencil className="h-4 w-4" />
+              Edit
+            </Link>
+          )}
 
           <button
             type="button"

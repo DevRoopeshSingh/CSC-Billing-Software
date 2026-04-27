@@ -1,7 +1,6 @@
-// src/app/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
@@ -9,132 +8,67 @@ import { ipc } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { useToast } from "@/components/Toast";
 import BookmarkedServices from "@/components/BookmarkedServices";
-import type { Customer, Service, InvoiceDetail } from "@/shared/types";
+import type { InvoiceDetail } from "@/shared/types";
 import {
   IndianRupee,
-  Users,
-  FileWarning,
-  Briefcase,
+  Receipt,
+  Hourglass,
+  Wallet,
   FilePlus,
-  UserPlus,
   BarChart3,
-  HardDrive,
-  ArrowUpRight,
   Clock,
-  TrendingUp,
+  FileWarning,
 } from "lucide-react";
 
-interface DashboardStats {
-  todayRevenue: number;
-  todayInvoiceCount: number;
-  totalCustomers: number;
-  pendingInvoices: number;
-  activeServices: number;
-  totalRevenue: number;
-  recentInvoices: Array<{
-    id: number;
-    invoiceNo: string;
-    customerName: string;
-    total: number;
-    status: string;
-    createdAt: string | Date;
-  }>;
-}
-
-const EMPTY_STATS: DashboardStats = {
-  todayRevenue: 0,
-  todayInvoiceCount: 0,
-  totalCustomers: 0,
-  pendingInvoices: 0,
-  activeServices: 0,
-  totalRevenue: 0,
-  recentInvoices: [],
+type ReportSummary = {
+  totals: {
+    invoiceCount: number;
+    subtotal: number;
+    taxTotal: number;
+    discount: number;
+    revenue: number;
+  };
 };
 
-function StatCard({
+type PendingDues = { count: number; total: number };
+
+type RecentInvoice = {
+  id: number;
+  invoiceNo: string;
+  customerName: string;
+  total: number;
+  status: string;
+  createdAt: string | Date;
+};
+
+function Tile({
   label,
   value,
+  sub,
   icon: Icon,
-  accent = "teal",
+  accent,
 }: {
   label: string;
   value: string;
+  sub?: string;
   icon: React.ElementType;
-  accent?: "teal" | "blue" | "amber" | "emerald";
+  accent: string;
 }) {
-  const accentMap = {
-    teal: "bg-teal-50 text-teal-600",
-    blue: "bg-blue-50 text-blue-600",
-    amber: "bg-amber-50 text-amber-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-  };
-
   return (
-    <div
-      className={cn(
-        "rounded-xl border border-border bg-card p-6",
-        "shadow-sm transition-shadow hover:shadow-md"
-      )}
-    >
+    <div className="rounded-xl border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
           <p className="mt-3 text-3xl font-bold text-foreground">{value}</p>
+          {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
         </div>
-        <div className={cn("rounded-xl p-3", accentMap[accent])}>
+        <div className={cn("rounded-xl p-3", accent)}>
           <Icon className="h-6 w-6" />
         </div>
       </div>
     </div>
-  );
-}
-
-function QuickAction({
-  href,
-  label,
-  description,
-  icon: Icon,
-  variant = "default",
-}: {
-  href: string;
-  label: string;
-  description: string;
-  icon: React.ElementType;
-  variant?: "default" | "primary";
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "group flex items-center gap-4 rounded-xl border p-5 transition-all",
-        variant === "primary"
-          ? "border-primary/20 bg-primary/5 hover:border-primary hover:bg-primary/10"
-          : "border-border bg-card hover:border-primary/40 hover:shadow-sm"
-      )}
-    >
-      <div
-        className={cn(
-          "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors",
-          variant === "primary"
-            ? "bg-primary text-white"
-            : "bg-background text-muted-foreground group-hover:bg-primary group-hover:text-white"
-        )}
-      >
-        <Icon className="h-5 w-5" />
-      </div>
-      <div className="flex-1">
-        <p className="text-sm font-semibold text-foreground">{label}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-      </div>
-      <ArrowUpRight
-        className={cn(
-          "h-4 w-4 text-muted-foreground opacity-0 transition-all",
-          "group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-        )}
-      />
-    </Link>
   );
 }
 
@@ -144,7 +78,6 @@ function StatusBadge({ status }: { status: string }) {
     PENDING: "bg-amber-50 text-amber-700 border-amber-200",
     CANCELLED: "bg-red-50 text-red-700 border-red-200",
   };
-
   return (
     <span
       className={cn(
@@ -157,55 +90,80 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function isoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function DashboardPage() {
   const { toast } = useToast();
-  const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
+  const [todayCount, setTodayCount] = useState(0);
+  const [todayRevenue, setTodayRevenue] = useState(0);
+  const [pendingDues, setPendingDues] = useState<PendingDues>({
+    count: 0,
+    total: 0,
+  });
+  const [avgInvoice, setAvgInvoice] = useState(0);
+  const [recent, setRecent] = useState<RecentInvoice[]>([]);
+  const lastLoadedDateRef = useRef<string | null>(null);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const today = isoDate(new Date());
+      lastLoadedDateRef.current = today;
+      const [todaySummary, dues, allInvoices] = await Promise.all([
+        ipc<ReportSummary>(IPC.REPORTS_SUMMARY, { start: today, end: today }),
+        ipc<PendingDues>(IPC.REPORTS_PENDING_DUES),
+        ipc<InvoiceDetail[]>(IPC.INVOICES_LIST),
+      ]);
+
+      const t = todaySummary?.totals;
+      setTodayCount(t?.invoiceCount ?? 0);
+      setTodayRevenue(t?.revenue ?? 0);
+      setPendingDues(dues ?? { count: 0, total: 0 });
+      setAvgInvoice(t && t.invoiceCount > 0 ? t.revenue / t.invoiceCount : 0);
+
+      setRecent(
+        (allInvoices ?? []).slice(0, 5).map((i) => ({
+          id: i.id!,
+          invoiceNo: i.invoiceNo,
+          customerName: i.customer?.name ?? "—",
+          total: i.total,
+          status: i.status,
+          createdAt: i.createdAt ?? new Date(),
+        }))
+      );
+    } catch {
+      toast("Unable to load dashboard data", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const [invoices, customers, services] = await Promise.all([
-          ipc<InvoiceDetail[]>(IPC.INVOICES_LIST),
-          ipc<Customer[]>(IPC.CUSTOMERS_LIST),
-          ipc<Service[]>(IPC.SERVICES_LIST),
-        ]);
+    loadDashboard();
+  }, [loadDashboard]);
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const todayInvoices = (invoices ?? []).filter((i) => {
-          const d = new Date(i.createdAt ?? 0);
-          return d >= today;
-        });
-
-        setStats({
-          todayRevenue: todayInvoices.reduce((s, i) => s + (i.total ?? 0), 0),
-          todayInvoiceCount: todayInvoices.length,
-          totalCustomers: (customers ?? []).length,
-          pendingInvoices: (invoices ?? []).filter((i) => i.status === "PENDING")
-            .length,
-          activeServices: (services ?? []).filter((s) => s.isActive).length,
-          totalRevenue: (invoices ?? []).reduce(
-            (s, i) => s + (i.total ?? 0),
-            0
-          ),
-          recentInvoices: (invoices ?? []).slice(0, 8).map((i) => ({
-            id: i.id!,
-            invoiceNo: i.invoiceNo,
-            customerName: i.customer?.name ?? "—",
-            total: i.total,
-            status: i.status,
-            createdAt: i.createdAt ?? new Date(),
-          })),
-        });
-      } catch {
-        toast("Unable to load dashboard data", "error");
-      } finally {
-        setLoading(false);
+  // Refetch when the user returns to the window if the local date has
+  // rolled over since the last load — keeps "Today's …" tiles honest for
+  // an app left open past midnight, without polling.
+  useEffect(() => {
+    const refetchIfDateChanged = () => {
+      if (document.visibilityState !== "visible") return;
+      if (lastLoadedDateRef.current && lastLoadedDateRef.current !== isoDate(new Date())) {
+        loadDashboard();
       }
-    })();
-  }, [toast]);
+    };
+    document.addEventListener("visibilitychange", refetchIfDateChanged);
+    window.addEventListener("focus", refetchIfDateChanged);
+    return () => {
+      document.removeEventListener("visibilitychange", refetchIfDateChanged);
+      window.removeEventListener("focus", refetchIfDateChanged);
+    };
+  }, [loadDashboard]);
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -220,7 +178,7 @@ export default function DashboardPage() {
         <div>
           <h2 className="text-2xl font-bold text-foreground">{greeting}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Here&apos;s what&apos;s happening at your center today
+            Today at a glance.
           </p>
         </div>
         <div className="flex gap-2.5">
@@ -248,188 +206,125 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Today's Collection"
-          value={loading ? "—" : formatCurrency(stats.todayRevenue)}
+        <Tile
+          label="Today's Invoices"
+          value={loading ? "—" : String(todayCount)}
+          sub="Excluding cancelled"
+          icon={Receipt}
+          accent="bg-teal-50 text-teal-600"
+        />
+        <Tile
+          label="Today's Revenue"
+          value={loading ? "—" : formatCurrency(todayRevenue)}
           icon={IndianRupee}
-          accent="teal"
+          accent="bg-emerald-50 text-emerald-600"
         />
-        <StatCard
-          label="Total Customers"
-          value={loading ? "—" : String(stats.totalCustomers)}
-          icon={Users}
-          accent="blue"
+        <Tile
+          label="Avg Invoice (today)"
+          value={loading ? "—" : formatCurrency(avgInvoice)}
+          icon={Wallet}
+          accent="bg-blue-50 text-blue-600"
         />
-        <StatCard
-          label="Pending Invoices"
-          value={loading ? "—" : String(stats.pendingInvoices)}
-          icon={FileWarning}
-          accent="amber"
-        />
-        <StatCard
-          label="Active Services"
-          value={loading ? "—" : String(stats.activeServices)}
-          icon={Briefcase}
-          accent="emerald"
+        <Tile
+          label="Pending Dues"
+          value={loading ? "—" : formatCurrency(pendingDues.total)}
+          sub={`${pendingDues.count} open · all-time`}
+          icon={Hourglass}
+          accent="bg-amber-50 text-amber-600"
         />
       </div>
 
       <BookmarkedServices />
 
-      <div>
-        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Quick Actions
-        </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <QuickAction
-            href="/billing/new"
-            label="Create Invoice"
-            description="Bill a customer for services"
-            icon={FilePlus}
-            variant="primary"
-          />
-          <QuickAction
-            href="/customers"
-            label="Add Customer"
-            description="Register a new customer"
-            icon={UserPlus}
-          />
-          <QuickAction
-            href="/reports"
-            label="View Reports"
-            description="Revenue and analytics"
-            icon={BarChart3}
-          />
-          <QuickAction
-            href="/settings/backup"
-            label="Backup Data"
-            description="Export database backup"
-            icon={HardDrive}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+      <div className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-primary" />
+            <Clock className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold text-foreground">
-              Revenue Overview
+              Recent Invoices
             </h3>
           </div>
-          <div className="mt-6 space-y-4">
-            <div className="flex items-end justify-between border-b border-border pb-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Today</p>
-                <p className="mt-1 text-xl font-bold text-foreground">
-                  {loading ? "—" : formatCurrency(stats.todayRevenue)}
-                </p>
-              </div>
-              <span className="text-xs font-medium text-muted-foreground">
-                {loading ? "—" : `${stats.todayInvoiceCount} invoices`}
-              </span>
-            </div>
-            <div className="flex items-end justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">All Time</p>
-                <p className="mt-1 text-xl font-bold text-foreground">
-                  {loading ? "—" : formatCurrency(stats.totalRevenue)}
-                </p>
-              </div>
-            </div>
-          </div>
+          <Link
+            href="/invoices"
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            View All
+          </Link>
         </div>
 
-        <div className="rounded-xl border border-border bg-card shadow-sm lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-border px-6 py-4">
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold text-foreground">
-                Recent Invoices
-              </h3>
-            </div>
-            <Link
-              href="/invoices"
-              className="text-xs font-medium text-primary hover:underline"
-            >
-              View All
-            </Link>
+        {loading ? (
+          <div className="flex h-48 items-center justify-center">
+            <p className="text-sm text-muted-foreground">Loading...</p>
           </div>
-
-          {loading ? (
-            <div className="flex h-48 items-center justify-center">
-              <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : recent.length === 0 ? (
+          <div className="flex h-48 flex-col items-center justify-center gap-3">
+            <FileWarning className="h-10 w-10 text-muted-foreground/40" />
+            <div className="text-center">
+              <p className="text-sm font-medium text-muted-foreground">
+                No invoices yet
+              </p>
+              <Link
+                href="/billing/new"
+                className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
+              >
+                Create your first invoice
+              </Link>
             </div>
-          ) : stats.recentInvoices.length === 0 ? (
-            <div className="flex h-48 flex-col items-center justify-center gap-3">
-              <FileWarning className="h-10 w-10 text-muted-foreground/40" />
-              <div className="text-center">
-                <p className="text-sm font-medium text-muted-foreground">
-                  No invoices yet
-                </p>
-                <Link
-                  href="/billing/new"
-                  className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
-                >
-                  Create your first invoice
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Invoice
-                    </th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Customer
-                    </th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Amount
-                    </th>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Invoice
+                  </th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Customer
+                  </th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Date
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Amount
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((inv) => (
+                  <tr
+                    key={inv.id}
+                    className="border-b border-border/50 last:border-0 hover:bg-background/60"
+                  >
+                    <td className="px-6 py-3.5">
+                      <Link
+                        href={`/invoices/${inv.id}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {inv.invoiceNo}
+                      </Link>
+                    </td>
+                    <td className="px-6 py-3.5 text-foreground">
+                      {inv.customerName}
+                    </td>
+                    <td className="px-6 py-3.5">
+                      <StatusBadge status={inv.status} />
+                    </td>
+                    <td className="px-6 py-3.5 text-muted-foreground">
+                      {formatDate(inv.createdAt)}
+                    </td>
+                    <td className="px-6 py-3.5 text-right font-semibold text-foreground">
+                      {formatCurrency(inv.total)}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {stats.recentInvoices.map((inv) => (
-                    <tr
-                      key={inv.id}
-                      className="border-b border-border/50 last:border-0 hover:bg-background/60"
-                    >
-                      <td className="px-6 py-3.5">
-                        <Link
-                          href={`/invoices/${inv.id}`}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {inv.invoiceNo}
-                        </Link>
-                      </td>
-                      <td className="px-6 py-3.5 text-foreground">
-                        {inv.customerName}
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <StatusBadge status={inv.status} />
-                      </td>
-                      <td className="px-6 py-3.5 text-muted-foreground">
-                        {formatDate(inv.createdAt)}
-                      </td>
-                      <td className="px-6 py-3.5 text-right font-semibold text-foreground">
-                        {formatCurrency(inv.total)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

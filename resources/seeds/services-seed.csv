@@ -1,0 +1,67 @@
+name,category,subcategory,default_price,tax_rate,price_is_starting_from,sort_order,keywords,notes,is_active,is_bookmarked
+GST Registration,GST Services,Registration,200,0,false,10,gst gstin registration new,Govt fee extra if applicable,true,true
+Monthly Return (Nil),GST Services,Returns,100,0,false,20,gst nil monthly return gstr3b,For traders with no transactions,true,false
+Return Filing (Regular),GST Services,Returns,199,0,true,30,gst monthly return gstr3b regular,Per return; rate varies by transaction count,true,true
+Annual Return (GSTR 9/9A),GST Services,Returns,1499,0,false,40,gst annual gstr9 gstr9a,Yearly filing,true,false
+GST Refund,GST Services,Refund,149,0,false,50,gst refund claim,Per refund application,true,false
+GST Notice Reply,GST Services,Notices,1599,0,false,60,gst notice reply scn,Govt notice handling,true,false
+GST Surrender / Cancellation,GST Services,Closure,200,0,false,70,gst cancel surrender closure,GSTIN cancellation,true,false
+E-Commerce Return (GSTR 8),GST Services,Returns,549,0,false,80,gst gstr8 ecommerce tcs,For e-commerce operators,true,false
+GST Reconciliation (Upto 3 Months),GST Services,Reconciliation,499,0,false,90,gst reconciliation reco gstr2a,Per quarter,true,false
+ITR Filing (Salary),Income Tax Services,ITR-1,199,0,false,10,itr1 salary filing income tax,Salary-only ITR-1,true,true
+ITR-2 / Capital Gain,Income Tax Services,ITR-2,399,0,false,20,itr2 capital gains shares property,Capital gains/multiple income heads,true,false
+Business ITR (ITR-3),Income Tax Services,ITR-3,399,0,false,30,itr3 business profession proprietor,Proprietor / business income,true,false
+Notice Reply,Income Tax Services,Notices,250,0,false,40,itr notice reply income tax intimation,Department notice handling,true,false
+Income Computation,Income Tax Services,Computation,249,0,false,50,income computation statement,Computation statement only,true,false
+ITR-4 / ITR-5,Income Tax Services,ITR-4-5,399,0,false,60,itr4 itr5 presumptive firm,Presumptive / firm filings,true,false
+ITR Correction,Income Tax Services,Revised,399,0,false,70,itr revised correction rectification,Revised / rectification return,true,false
+Advance Tax Calculation,Income Tax Services,Advance Tax,399,0,false,80,advance tax calculation challan,Per quarter/year,true,false
+Project Report (Per Year),Income Tax Services,Project Report,399,0,false,90,project report bank loan cma,Bank/loan project report,true,false
+Udyam Registration,Registration Services,MSME,250,0,false,10,udyam msme registration ssi,MSME / Udyam registration,true,true
+FSSAI License / Reg.,Registration Services,FSSAI,499,0,true,20,fssai food license registration,Govt fee varies by category,true,false
+Shop & Establishment Act,Registration Services,Shop Act,799,0,false,30,shop establishment act gumasta labour,State-wise registration,true,false
+Pvt Ltd Company,Registration Services,Company,1500,0,false,40,pvt ltd company incorporation roc,Professional fee; govt fee extra,true,false
+LLP Formation,Registration Services,LLP,1500,0,false,50,llp limited liability partnership,Professional fee; govt fee extra,true,false
+Partnership Firm,Registration Services,Partnership,999,0,false,60,partnership firm deed registration,Drafting + registration,true,false
+TAN Registration,Registration Services,TAN,250,0,false,70,tan registration tds,TAN application,true,false
+DIN (Director Identification),Registration Services,DIN,500,0,false,80,din director identification dir3,Per director,true,false
+OPC Registration,Registration Services,Company,999,0,false,90,opc one person company,One Person Company,true,false
+DSC Class 3 (1 Year),DSC Services,Class 3,1499,18,false,10,dsc class3 1year digital signature,1-year validity,true,true
+DSC Class 3 (2 Year),DSC Services,Class 3,1799,18,false,20,dsc class3 2year digital signature,2-year validity,true,false
+DSC Without Token (2 Year),DSC Services,Without Token,1500,18,false,30,dsc without token 2year softcopy,DSC only; no USB token,true,false
+DSC Govt. (2 Year) With Token,DSC Services,Govt,3499,18,false,40,dsc government with token gem,For govt portals with USB token,true,false
+DSC Signature (Individual),DSC Services,Individual,1499,18,true,50,dsc signature individual personal,Starting from; depends on CA,true,false
+DSC Organization,DSC Services,Organization,1499,18,false,60,dsc organization company,Org / company DSC,true,false
+DSC Token,DSC Services,Token,350,18,false,70,dsc token usb epass proxkey,USB token only,true,false
+Balance Sheet & P&L A/c,Accounting Services,Statements,499,0,false,10,balance sheet pnl profit loss,Year-end statements only,true,false
+Monthly Accounting,Accounting Services,Monthly,599,0,true,20,monthly accounting bookkeeping basic,Basic monthly bookkeeping,true,false
+Monthly Accounting (Upto 50L Turnover),Accounting Services,Monthly,1199,0,true,30,monthly accounting 50lakh tier,Per month; up to 50L turnover,true,false
+Yearly Accounting Package (Upto 20L Turnover),Accounting Services,Yearly,6599,0,true,40,yearly accounting package 20lakh tier,Annual package; up to 20L turnover,true,false
+Yearly Accounting Package (Upto 1 Cr Turnover),Accounting Services,Yearly,19799,0,true,50,yearly accounting package 1cr tier,Annual package; up to 1Cr turnover,true,false
+Trademark Registration,Business & Legal Services,Trademark,999,0,true,10,trademark tm registration brand,Per class; govt fee extra,true,false
+IEC Code Registration,Business & Legal Services,IEC,999,0,false,20,iec import export code dgft,Importer-Exporter Code,true,false
+ROC Filing & Compliance,Business & Legal Services,ROC,3000,0,true,30,roc filing compliance mca aoc moa,Annual ROC compliance,true,false
+Company Name Change,Business & Legal Services,ROC,2499,0,true,40,company name change roc mca,Name change filing,true,false
+MoA / AoA Drafting,Business & Legal Services,Drafting,1999,0,true,50,moa aoa drafting memorandum articles,MoA / AoA drafting,true,false
+E-way Bill Registration,E-way Bill Services,Registration,49,0,false,10,eway bill registration ewb new,Initial registration,true,false
+E-way Pack - 5 (Monthly),E-way Bill Services,Packs,49,0,false,20,eway pack 5 monthly bills,5 e-way bills per month,true,false
+E-way Pack - 15 (Monthly),E-way Bill Services,Packs,199,0,false,30,eway pack 15 monthly bills,15 e-way bills per month,true,false
+E-way Pack - 100 (Quarterly),E-way Bill Services,Packs,899,0,false,40,eway pack 100 quarterly bills,100 e-way bills per quarter,true,false
+PAN Card,Government Services,PAN,129,0,false,10,pan card nsdl uti new pan,New PAN application,true,true
+Aadhaar Update,Government Services,Aadhaar,50,0,false,20,aadhaar update uidai correction,Aadhaar correction/update,true,true
+Voter ID,Government Services,Voter,100,0,false,30,voter id epic election form6,Voter ID enrolment/correction,true,false
+Passport Service,Government Services,Passport,200,0,false,40,passport seva form filling appointment,Form filling and appointment,true,false
+Driving License,Government Services,DL,200,0,false,50,driving license dl learner permanent,DL form filling and slot,true,false
+Business Website,Website & Digital Marketing,Website,2500,18,false,10,business website static informational,Basic informational website,true,false
+E-commerce Website,Website & Digital Marketing,Website,10000,18,false,20,ecommerce website online store shop,E-commerce store with cart,true,false
+Logo Design,Website & Digital Marketing,Design,1500,18,false,30,logo design branding identity,Custom logo design,true,false
+Google Ads Setup,Website & Digital Marketing,Marketing,2500,18,false,40,google ads adwords setup ppc,Account + initial campaign setup,true,false
+Social Media Setup,Website & Digital Marketing,Marketing,500,18,false,50,social media setup facebook instagram,Profile setup + branding,true,false
+NRI Services,Other Services,NRI,999,0,true,10,nri services overseas pan tax,NRI documentation/tax,true,false
+Document Drafting,Other Services,Drafting,500,0,true,20,document drafting agreement deed,General document drafting,true,false
+Affidavit / Notary,Other Services,Notary,100,0,true,30,affidavit notary stamp paper,Affidavit drafting + notary,true,false
+Photo & Lamination,Other Services,Photo,20,0,true,40,photo lamination print id,Photo print and lamination,true,false
+Scanning & Printing,Other Services,Print,10,0,true,50,scan print xerox photocopy,Per page; B&W default,true,true
+Form Filling (General),Misc,Forms,50,0,true,10,form filling application generic,Generic form filling,true,true
+Photocopy (B&W),Misc,Print,2,0,false,20,xerox photocopy bw print,Per page B&W,true,true
+Color Printing,Misc,Print,10,0,true,30,color printing photo print,Per page color,true,false

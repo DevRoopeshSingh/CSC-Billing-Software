@@ -22,15 +22,24 @@ export const centerProfiles = sqliteTable("center_profiles", {
   pinHash: text("pin_hash"),
   operatingHours: text("operating_hours").notNull().default(""),
   centerDescription: text("center_description").notNull().default(""),
+  printerInterface: text("printer_interface").notNull().default("tcp://192.168.1.100:9100"),
+  printerType: text("printer_type").notNull().default("EPSON"),
+  printUpiQr: integer("print_upi_qr", { mode: "boolean" }).notNull().default(false),
 });
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 export const services = sqliteTable("services", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
-  category: text("category").notNull().default("Other"),
+  category: text("category").notNull().default("Other Services"),
+  subcategory: text("subcategory").notNull().default(""),
   defaultPrice: real("default_price").notNull().default(0),
   taxRate: real("tax_rate").notNull().default(0),
+  priceIsStartingFrom: integer("price_is_starting_from", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  notes: text("notes").notNull().default(""),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   isBookmarked: integer("is_bookmarked", { mode: "boolean" }).notNull().default(false),
   keywords: text("keywords").notNull().default(""),

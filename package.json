@@ -39,6 +39,13 @@
       "dist-electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/seeds",
+        "to": "seeds",
+        "filter": ["**/*"]
+      }
+    ],
     "afterPack": "scripts/after-pack.mjs",
     "mac": {
       "target": "dmg",
@@ -50,7 +57,6 @@
     }
   },
   "dependencies": {
-    "@types/recharts": "^1.8.29",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.9.0",
     "class-variance-authority": "^0.7.1",
@@ -64,7 +70,6 @@
     "pdf-lib": "^1.17.1",
     "react": "^18",
     "react-dom": "^18",
-    "recharts": "^3.8.0",
     "tailwind-merge": "^2.6.0",
     "zod": "^3.24.0"
   },

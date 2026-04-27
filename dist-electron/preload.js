@@ -26,10 +26,17 @@ var IPC = {
   SERVICES_DELETE: "services:delete",
   SERVICES_TOGGLE_BOOKMARK: "services:toggle-bookmark",
   SERVICES_GET_BOOKMARKED: "services:get-bookmarked",
+  SERVICES_IMPORT_CSV: "services:import-csv",
+  SERVICES_LOAD_SEED_CATALOGUE: "services:load-seed-catalogue",
+  SERVICES_BULK_UPDATE: "services:bulk-update",
+  SERVICES_BULK_DELETE: "services:bulk-delete",
+  SERVICE_CHECKLIST_LIST: "service-checklist:list",
+  SERVICE_CHECKLIST_UPSERT_BULK: "service-checklist:upsert-bulk",
   // ── Invoices ─────────────────────────────────────────────────────────────
   INVOICES_LIST: "invoices:list",
   INVOICES_GET: "invoices:get",
   INVOICES_CREATE: "invoices:create",
+  INVOICES_UPDATE: "invoices:update",
   INVOICES_UPDATE_STATUS: "invoices:update-status",
   INVOICES_DELETE: "invoices:delete",
   INVOICES_GENERATE_PDF: "invoices:generate-pdf",
@@ -44,7 +51,11 @@ var IPC = {
   BACKUP_IMPORT: "backup:import",
   // ── Reports ──────────────────────────────────────────────────────────────
   REPORTS_DAILY: "reports:daily",
-  REPORTS_RANGE: "reports:range"
+  REPORTS_RANGE: "reports:range",
+  REPORTS_SUMMARY: "reports:summary",
+  REPORTS_TOP_CUSTOMERS: "reports:top-customers",
+  REPORTS_TOP_SERVICES: "reports:top-services",
+  REPORTS_PENDING_DUES: "reports:pending-dues"
 };
 
 // src/main/preload.ts

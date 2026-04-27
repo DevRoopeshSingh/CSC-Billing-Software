@@ -7,7 +7,7 @@ import path from "path";
 import fs from "fs";
 import { spawn, ChildProcess } from "child_process";
 import { autoUpdater } from "electron-updater";
-import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, getTableColumns } from "drizzle-orm";
 import { z } from "zod";
 import { initDatabase, getDb, getSqlite, closeDatabase } from "../db";
 import * as schema from "../db/schema";
@@ -18,7 +18,17 @@ import {
   createInvoiceSchema,
   centerProfileSchema,
   InvoiceStatus,
+  servicesImportSchema,
+  bulkUpdateServicesSchema,
+  bulkDeleteServicesSchema,
+  checklistUpsertBulkSchema,
+  type ServicesImportSeedRow,
+  type ServicesImportResult,
+  type Service,
+  type BulkDeleteServicesResult,
 } from "../shared/types";
+import { SERVICE_CATEGORIES } from "../config/categories";
+import { parseCsv } from "../lib/csv";
 import { scanForPrinters } from "./printerScan";
 import { generateInvoicePdf } from "./invoicePdf";
 import { printReceipt, printTestPage } from "./printerReceipt";
@@ -34,6 +44,11 @@ process.env.USER_DATA_PATH = userDataPath;
 let mainWindow: BrowserWindow | null = null;
 let nextProcess: ChildProcess | null = null;
 let digestShownToday = "";
+
+// ── Shared SQL fragments ─────────────────────────────────────────────────────
+// Business rule: revenue/aggregation queries must exclude CANCELLED invoices.
+// Centralized so the rule is enforced consistently across handlers.
+const notCancelled = sql`${schema.invoices.status} != 'CANCELLED'`;
 
 // ── Safe IPC wrapper ─────────────────────────────────────────────────────────
 type Handler = (
@@ -67,47 +82,193 @@ function parseArg<T>(schema: z.ZodType<T>, arg: unknown, label: string): T {
   return result.data;
 }
 
-// ── Printer config (in-memory) ───────────────────────────────────────────────
-interface PrinterConfig {
-  interface: string;
-  type: string;
-  printUpiQr: boolean;
-}
-let printerConfig: PrinterConfig = {
-  interface: "tcp://192.168.1.100:9100",
-  type: "EPSON",
-  printUpiQr: false,
-};
+// ── Printer config is now in DB (center_profiles) ────────────────────────────
 
 // ── DB bootstrap ─────────────────────────────────────────────────────────────
-const DEFAULT_SERVICES: Array<{
-  name: string;
-  category: string;
-  defaultPrice: number;
-  taxRate: number;
-  keywords: string;
-}> = [
-  { name: "Aadhaar Update", category: "Govt Services", defaultPrice: 100, taxRate: 0, keywords: "aadhaar uidai" },
-  { name: "PAN Application", category: "Govt Services", defaultPrice: 120, taxRate: 18, keywords: "pan income tax" },
-  { name: "Voter ID", category: "Govt Services", defaultPrice: 80, taxRate: 0, keywords: "voter epic" },
-  { name: "Xerox / Print (B&W)", category: "Miscellaneous", defaultPrice: 2, taxRate: 0, keywords: "xerox photocopy print" },
-  { name: "Form Filling", category: "Miscellaneous", defaultPrice: 50, taxRate: 18, keywords: "form application" },
-  { name: "Electricity Bill Pay", category: "Utility Bills", defaultPrice: 20, taxRate: 18, keywords: "electricity bill discom" },
-  { name: "Mobile/DTH Recharge", category: "Utility Bills", defaultPrice: 10, taxRate: 18, keywords: "recharge mobile dth" },
-  { name: "Train Ticket Booking", category: "Travel", defaultPrice: 40, taxRate: 18, keywords: "irctc train railway" },
-  { name: "Bank Passbook Print", category: "Banking & Payments", defaultPrice: 10, taxRate: 0, keywords: "bank passbook" },
-];
+// Resolve the bundled services seed CSV. In dev we read from the repo;
+// in a packaged app it sits under `process.resourcesPath/seeds/`.
+function resolveSeedCsvPath(): string | null {
+  const candidates = app.isPackaged
+    ? [path.join(process.resourcesPath, "seeds", "services-seed.csv")]
+    : [
+        path.join(process.cwd(), "resources", "seeds", "services-seed.csv"),
+        // dist-electron is one level below the repo root in dev.
+        path.join(__dirname, "..", "resources", "seeds", "services-seed.csv"),
+        path.join(__dirname, "..", "..", "resources", "seeds", "services-seed.csv"),
+      ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
 
-const DEFAULT_BOOKMARKS = new Set([
-  "Aadhaar Update",
-  "PAN Application",
-  "Xerox / Print (B&W)",
-  "Form Filling",
-  "Electricity Bill Pay",
-  "Mobile/DTH Recharge",
-  "Train Ticket Booking",
-  "Bank Passbook Print",
-]);
+const VALID_CATEGORIES: ReadonlySet<string> = new Set(SERVICE_CATEGORIES);
+
+function coerceBool(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === undefined) return fallback;
+  const v = raw.trim().toLowerCase();
+  if (v === "") return fallback;
+  if (["1", "true", "yes", "y", "t"].includes(v)) return true;
+  if (["0", "false", "no", "n", "f"].includes(v)) return false;
+  return fallback;
+}
+
+function coerceNumber(raw: string | undefined): number | null {
+  if (raw === undefined) return null;
+  const v = raw.trim();
+  if (v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+interface SeedNormalizeResult {
+  rows: ServicesImportSeedRow[];
+  skipped: { row: number; reason: string }[];
+}
+
+function normalizeSeedRows(
+  csvRows: Record<string, string>[]
+): SeedNormalizeResult {
+  const rows: ServicesImportSeedRow[] = [];
+  const skipped: { row: number; reason: string }[] = [];
+
+  csvRows.forEach((raw, idx) => {
+    // CSV row numbers are 1-based with header on line 1, so data rows start at 2.
+    const lineNo = idx + 2;
+    const name = (raw.name ?? "").trim();
+    const category = (raw.category ?? "").trim();
+    if (!name) {
+      skipped.push({ row: lineNo, reason: "name is required" });
+      return;
+    }
+    if (!VALID_CATEGORIES.has(category)) {
+      skipped.push({
+        row: lineNo,
+        reason: `category "${category}" is not in the locked taxonomy`,
+      });
+      return;
+    }
+    const price = coerceNumber(raw.default_price);
+    if (price === null || price < 0) {
+      skipped.push({ row: lineNo, reason: "default_price must be a non-negative number" });
+      return;
+    }
+    const taxRate = coerceNumber(raw.tax_rate);
+    rows.push({
+      name,
+      category,
+      subcategory: (raw.subcategory ?? "").trim(),
+      defaultPrice: price,
+      taxRate: taxRate === null ? 0 : Math.max(0, Math.min(100, taxRate)),
+      priceIsStartingFrom: coerceBool(raw.price_is_starting_from, false),
+      sortOrder: Math.max(0, Math.trunc(coerceNumber(raw.sort_order) ?? 0)),
+      keywords: (raw.keywords ?? "").trim(),
+      notes: (raw.notes ?? "").trim(),
+      isActive: coerceBool(raw.is_active, true),
+      isBookmarked: coerceBool(raw.is_bookmarked, false),
+    });
+  });
+
+  return { rows, skipped };
+}
+
+function seedRowsEqual(a: Service, b: ServicesImportSeedRow): boolean {
+  return (
+    a.name === b.name &&
+    a.category === b.category &&
+    (a.subcategory ?? "") === b.subcategory &&
+    Number(a.defaultPrice) === b.defaultPrice &&
+    Number(a.taxRate) === b.taxRate &&
+    Boolean(a.priceIsStartingFrom) === b.priceIsStartingFrom &&
+    Number(a.sortOrder ?? 0) === b.sortOrder &&
+    (a.keywords ?? "") === b.keywords &&
+    (a.notes ?? "") === b.notes
+  );
+}
+
+// Apply the seed/import rules. Caller controls the transaction boundary so
+// the same logic powers fresh-DB seeding, preview, and commit.
+function applyServiceSeed(
+  rows: ServicesImportSeedRow[]
+): {
+  added: ServicesImportSeedRow[];
+  updated: { before: Service; after: ServicesImportSeedRow }[];
+  unchanged: number;
+} {
+  const sqlite = getSqlite();
+  const existing = sqlite
+    .prepare(
+      `SELECT id, name, category, subcategory, default_price as defaultPrice,
+              tax_rate as taxRate, price_is_starting_from as priceIsStartingFrom,
+              sort_order as sortOrder, notes, is_active as isActive,
+              is_bookmarked as isBookmarked, keywords FROM services`
+    )
+    .all() as Service[];
+
+  const byKey = new Map<string, Service>();
+  for (const svc of existing) {
+    byKey.set(`${svc.name.toLowerCase()}|${svc.category}`, svc);
+  }
+
+  const insert = sqlite.prepare(
+    `INSERT INTO services
+      (name, category, subcategory, default_price, tax_rate,
+       price_is_starting_from, sort_order, notes, is_active,
+       is_bookmarked, keywords)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  // Update rule: never overwrite operator-managed is_active / is_bookmarked.
+  const update = sqlite.prepare(
+    `UPDATE services
+       SET subcategory = ?, default_price = ?, tax_rate = ?,
+           price_is_starting_from = ?, sort_order = ?, notes = ?,
+           keywords = ?
+     WHERE id = ?`
+  );
+
+  const added: ServicesImportSeedRow[] = [];
+  const updated: { before: Service; after: ServicesImportSeedRow }[] = [];
+  let unchanged = 0;
+
+  for (const row of rows) {
+    const key = `${row.name.toLowerCase()}|${row.category}`;
+    const match = byKey.get(key);
+    if (!match) {
+      insert.run(
+        row.name,
+        row.category,
+        row.subcategory,
+        row.defaultPrice,
+        row.taxRate,
+        row.priceIsStartingFrom ? 1 : 0,
+        row.sortOrder,
+        row.notes,
+        row.isActive ? 1 : 0,
+        row.isBookmarked ? 1 : 0,
+        row.keywords
+      );
+      added.push(row);
+      continue;
+    }
+    if (seedRowsEqual(match, row)) {
+      unchanged++;
+      continue;
+    }
+    update.run(
+      row.subcategory,
+      row.defaultPrice,
+      row.taxRate,
+      row.priceIsStartingFrom ? 1 : 0,
+      row.sortOrder,
+      row.notes,
+      row.keywords,
+      match.id
+    );
+    updated.push({ before: match, after: row });
+  }
+
+  return { added, updated, unchanged };
+}
 
 function bootstrapDatabase() {
   if (!fs.existsSync(path.dirname(dbPath))) {
@@ -153,9 +314,13 @@ function bootstrapDatabase() {
     CREATE TABLE IF NOT EXISTS services (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
-      category TEXT NOT NULL DEFAULT 'Other',
+      category TEXT NOT NULL DEFAULT 'Other Services',
+      subcategory TEXT NOT NULL DEFAULT '',
       default_price REAL NOT NULL DEFAULT 0,
       tax_rate REAL NOT NULL DEFAULT 0,
+      price_is_starting_from INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      notes TEXT NOT NULL DEFAULT '',
       is_active INTEGER NOT NULL DEFAULT 1,
       is_bookmarked INTEGER NOT NULL DEFAULT 0,
       keywords TEXT NOT NULL DEFAULT ''
@@ -227,16 +392,50 @@ function bootstrapDatabase() {
     CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at);
     CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
     CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id);
+    CREATE INDEX IF NOT EXISTS idx_services_category_sort ON services(category, sort_order);
   `);
 
-  // Migration: add is_bookmarked if an older DB predates it.
+  // Migration: services schema additions are additive only and idempotent.
   const cols = sqlite
     .prepare("PRAGMA table_info(services)")
     .all() as { name: string }[];
-  if (!cols.find((c) => c.name === "is_bookmarked")) {
+  const haveSvc = new Set(cols.map((c) => c.name));
+  if (!haveSvc.has("is_bookmarked")) {
     sqlite.exec(
       "ALTER TABLE services ADD COLUMN is_bookmarked INTEGER NOT NULL DEFAULT 0"
     );
+  }
+  if (!haveSvc.has("subcategory")) {
+    sqlite.exec(
+      "ALTER TABLE services ADD COLUMN subcategory TEXT NOT NULL DEFAULT ''"
+    );
+  }
+  if (!haveSvc.has("price_is_starting_from")) {
+    sqlite.exec(
+      "ALTER TABLE services ADD COLUMN price_is_starting_from INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+  if (!haveSvc.has("sort_order")) {
+    sqlite.exec(
+      "ALTER TABLE services ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+  if (!haveSvc.has("notes")) {
+    sqlite.exec(
+      "ALTER TABLE services ADD COLUMN notes TEXT NOT NULL DEFAULT ''"
+    );
+  }
+
+  // Migration: add printer columns to center_profiles if missing
+  const cpCols = sqlite
+    .prepare("PRAGMA table_info(center_profiles)")
+    .all() as { name: string }[];
+  if (!cpCols.find((c) => c.name === "printer_interface")) {
+    sqlite.exec(`
+      ALTER TABLE center_profiles ADD COLUMN printer_interface TEXT NOT NULL DEFAULT 'tcp://192.168.1.100:9100';
+      ALTER TABLE center_profiles ADD COLUMN printer_type TEXT NOT NULL DEFAULT 'EPSON';
+      ALTER TABLE center_profiles ADD COLUMN print_upi_qr INTEGER NOT NULL DEFAULT 0;
+    `);
   }
 
   // Seed a single center profile row.
@@ -247,28 +446,38 @@ function bootstrapDatabase() {
     db.insert(schema.centerProfiles).values({}).run();
   }
 
-  // Seed default services if the catalog is empty.
+  // Seed the canonical CSC catalogue from the bundled CSV — fresh DBs only.
+  // Existing installs are never re-seeded automatically; the operator must
+  // trigger a manual import (Phase 2 UI) via SERVICES_IMPORT_CSV.
   const serviceCount = sqlite
     .prepare("SELECT COUNT(*) as count FROM services")
     .get() as { count: number };
   if (serviceCount.count === 0) {
-    const insert = sqlite.prepare(
-      `INSERT INTO services (name, category, default_price, tax_rate, is_active, is_bookmarked, keywords)
-       VALUES (?, ?, ?, ?, 1, ?, ?)`
-    );
-    const tx = sqlite.transaction(() => {
-      for (const s of DEFAULT_SERVICES) {
-        insert.run(
-          s.name,
-          s.category,
-          s.defaultPrice,
-          s.taxRate,
-          DEFAULT_BOOKMARKS.has(s.name) ? 1 : 0,
-          s.keywords
+    const seedPath = resolveSeedCsvPath();
+    if (!seedPath) {
+      console.warn(
+        "[seed] services-seed.csv not found — starting with an empty service catalogue."
+      );
+    } else {
+      try {
+        const text = fs.readFileSync(seedPath, "utf8");
+        const parsed = parseCsv(text);
+        const { rows: seedRows, skipped } = normalizeSeedRows(parsed.rows);
+        const tx = sqlite.transaction(() => applyServiceSeed(seedRows));
+        const result = tx();
+        console.log(
+          `[seed] services seeded from ${seedPath}: ` +
+            `added=${result.added.length}, skipped=${skipped.length + parsed.errors.length}`
         );
+        if (skipped.length > 0) {
+          for (const s of skipped) {
+            console.warn(`[seed] row ${s.row} skipped: ${s.reason}`);
+          }
+        }
+      } catch (err) {
+        console.error("[seed] failed to seed services from CSV:", err);
       }
-    });
-    tx();
+    }
   }
 
   return db;
@@ -378,7 +587,21 @@ function registerIpcHandlers() {
 
   // Customers
   safeHandle(IPC.CUSTOMERS_LIST, () =>
-    db.select().from(schema.customers).all()
+    db
+      .select({
+        ...getTableColumns(schema.customers),
+        invoiceCount: sql<number>`count(${schema.invoices.id})`.mapWith(Number),
+        totalBilled: sql<number>`COALESCE(sum(${schema.invoices.total}), 0)`.mapWith(
+          Number
+        ),
+      })
+      .from(schema.customers)
+      .leftJoin(
+        schema.invoices,
+        and(eq(schema.customers.id, schema.invoices.customerId), notCancelled)
+      )
+      .groupBy(schema.customers.id)
+      .all()
   );
   safeHandle(IPC.CUSTOMERS_GET, (_e, id) =>
     db
@@ -420,11 +643,22 @@ function registerIpcHandlers() {
     const q = z.string().parse(query);
     const pattern = `%${q}%`;
     return db
-      .select()
+      .select({
+        ...getTableColumns(schema.customers),
+        invoiceCount: sql<number>`count(${schema.invoices.id})`.mapWith(Number),
+        totalBilled: sql<number>`COALESCE(sum(${schema.invoices.total}), 0)`.mapWith(
+          Number
+        ),
+      })
       .from(schema.customers)
+      .leftJoin(
+        schema.invoices,
+        and(eq(schema.customers.id, schema.invoices.customerId), notCancelled)
+      )
       .where(
         sql`${schema.customers.name} LIKE ${pattern} OR ${schema.customers.mobile} LIKE ${pattern}`
       )
+      .groupBy(schema.customers.id)
       .all();
   });
 
@@ -491,6 +725,297 @@ function registerIpcHandlers() {
       )
       .all()
   );
+
+  // Bulk import the services catalogue from CSV. Two modes:
+  //   - "preview": runs the diff in a SAVEPOINT and rolls it back.
+  //   - "commit":  applies the diff in a single transaction with a backup
+  //                snapshot table written before the changes.
+  // Operator-managed flags (is_active, is_bookmarked) are NEVER overwritten
+  // on existing rows; they only apply to brand-new inserts.
+  safeHandle(IPC.SERVICES_IMPORT_CSV, (_e, raw) => {
+    const { csv, mode } = parseArg(
+      servicesImportSchema,
+      raw,
+      "services:import-csv"
+    );
+    const parsed = parseCsv(csv);
+    const { rows, skipped } = normalizeSeedRows(parsed.rows);
+    const parseSkipped = parsed.errors.map((e) => ({
+      row: e.line,
+      reason: e.message,
+    }));
+
+    const sqlite = getSqlite();
+
+    if (mode === "preview") {
+      // Apply inside a SAVEPOINT, capture the diff, then roll back so no
+      // rows are mutated.
+      let preview!: ReturnType<typeof applyServiceSeed>;
+      sqlite.exec("SAVEPOINT svc_import_preview");
+      try {
+        preview = applyServiceSeed(rows);
+      } finally {
+        sqlite.exec("ROLLBACK TO SAVEPOINT svc_import_preview");
+        sqlite.exec("RELEASE SAVEPOINT svc_import_preview");
+      }
+      const result: ServicesImportResult = {
+        added: preview.added,
+        updated: preview.updated,
+        unchanged: preview.unchanged,
+        skipped: [...skipped, ...parseSkipped],
+        totals: {
+          rowsRead: parsed.rows.length,
+          willAdd: preview.added.length,
+          willUpdate: preview.updated.length,
+        },
+        committed: false,
+      };
+      return result;
+    }
+
+    // commit mode — single transaction, with a backup snapshot table.
+    const ts = new Date()
+      .toISOString()
+      .replace(/[-:T]/g, "")
+      .slice(0, 14);
+    const backupTable = `services_backup_${ts}`;
+
+    const tx = sqlite.transaction(() => {
+      sqlite.exec(
+        `CREATE TABLE IF NOT EXISTS "${backupTable}" AS SELECT * FROM services`
+      );
+      return applyServiceSeed(rows);
+    });
+
+    const applied = tx();
+    const result: ServicesImportResult = {
+      added: applied.added,
+      updated: applied.updated,
+      unchanged: applied.unchanged,
+      skipped: [...skipped, ...parseSkipped],
+      totals: {
+        rowsRead: parsed.rows.length,
+        willAdd: applied.added.length,
+        willUpdate: applied.updated.length,
+      },
+      committed: true,
+    };
+    return result;
+  });
+
+  // Load the bundled seed catalogue and apply it via the same import logic.
+  // Preview shows the diff without mutating; commit applies inside one
+  // transaction with a backup snapshot. Same preservation rules as
+  // SERVICES_IMPORT_CSV (operator-state never overwritten; no deletes).
+  safeHandle(IPC.SERVICES_LOAD_SEED_CATALOGUE, (_e, raw) => {
+    const { mode } = parseArg(
+      z.object({ mode: z.enum(["preview", "commit"]) }),
+      raw,
+      "services:load-seed-catalogue"
+    );
+    const seedPath = resolveSeedCsvPath();
+    if (!seedPath) {
+      throw new Error(
+        "Bundled seed catalogue not found. Reinstall or import a CSV manually."
+      );
+    }
+    const text = fs.readFileSync(seedPath, "utf8");
+    const parsed = parseCsv(text);
+    const { rows, skipped } = normalizeSeedRows(parsed.rows);
+    const parseSkipped = parsed.errors.map((e) => ({
+      row: e.line,
+      reason: e.message,
+    }));
+    const sqlite = getSqlite();
+
+    if (mode === "preview") {
+      let preview!: ReturnType<typeof applyServiceSeed>;
+      sqlite.exec("SAVEPOINT svc_seed_preview");
+      try {
+        preview = applyServiceSeed(rows);
+      } finally {
+        sqlite.exec("ROLLBACK TO SAVEPOINT svc_seed_preview");
+        sqlite.exec("RELEASE SAVEPOINT svc_seed_preview");
+      }
+      const result: ServicesImportResult = {
+        added: preview.added,
+        updated: preview.updated,
+        unchanged: preview.unchanged,
+        skipped: [...skipped, ...parseSkipped],
+        totals: {
+          rowsRead: parsed.rows.length,
+          willAdd: preview.added.length,
+          willUpdate: preview.updated.length,
+        },
+        committed: false,
+      };
+      return result;
+    }
+
+    const ts = new Date()
+      .toISOString()
+      .replace(/[-:T]/g, "")
+      .slice(0, 14);
+    const backupTable = `services_backup_${ts}`;
+    const tx = sqlite.transaction(() => {
+      sqlite.exec(
+        `CREATE TABLE IF NOT EXISTS "${backupTable}" AS SELECT * FROM services`
+      );
+      return applyServiceSeed(rows);
+    });
+    const applied = tx();
+    const result: ServicesImportResult = {
+      added: applied.added,
+      updated: applied.updated,
+      unchanged: applied.unchanged,
+      skipped: [...skipped, ...parseSkipped],
+      totals: {
+        rowsRead: parsed.rows.length,
+        willAdd: applied.added.length,
+        willUpdate: applied.updated.length,
+      },
+      committed: true,
+    };
+    return result;
+  });
+
+  // Bulk patch services. Single transaction; cap enforced by Zod (500).
+  safeHandle(IPC.SERVICES_BULK_UPDATE, (_e, raw) => {
+    const { ids, patch } = parseArg(
+      bulkUpdateServicesSchema,
+      raw,
+      "services:bulk-update"
+    );
+    const sqlite = getSqlite();
+    const tx = sqlite.transaction(() => {
+      let count = 0;
+      for (const id of ids) {
+        const r = db
+          .update(schema.services)
+          .set(patch)
+          .where(eq(schema.services.id, id))
+          .run();
+        count += r.changes;
+      }
+      return count;
+    });
+    return { updated: tx() };
+  });
+
+  // Bulk delete services with the existing in-use guard. Rows referenced by
+  // any invoiceItems are skipped and returned in `skippedInUse`; the rest
+  // delete in a single transaction.
+  safeHandle(IPC.SERVICES_BULK_DELETE, (_e, raw) => {
+    const { ids } = parseArg(
+      bulkDeleteServicesSchema,
+      raw,
+      "services:bulk-delete"
+    );
+    const sqlite = getSqlite();
+    const inUseRows = sqlite
+      .prepare(
+        `SELECT DISTINCT service_id as id FROM invoice_items
+           WHERE service_id IN (${ids.map(() => "?").join(",")})`
+      )
+      .all(...ids) as { id: number }[];
+    const skippedInUse = inUseRows.map((r) => r.id);
+    const inUseSet = new Set(skippedInUse);
+    const safeIds = ids.filter((id) => !inUseSet.has(id));
+
+    const tx = sqlite.transaction(() => {
+      let count = 0;
+      for (const id of safeIds) {
+        const r = db
+          .delete(schema.services)
+          .where(eq(schema.services.id, id))
+          .run();
+        count += r.changes;
+      }
+      return count;
+    });
+
+    const result: BulkDeleteServicesResult = {
+      deleted: tx(),
+      skippedInUse,
+    };
+    return result;
+  });
+
+  // Service checklist (per-service required documents). Read-only list +
+  // bulk replace-all upsert. Used by the Service Edit modal.
+  safeHandle(IPC.SERVICE_CHECKLIST_LIST, (_e, raw) => {
+    const { serviceId } = parseArg(
+      z.object({ serviceId: z.number().int().positive() }),
+      raw,
+      "service-checklist:list"
+    );
+    return db
+      .select()
+      .from(schema.serviceChecklists)
+      .where(eq(schema.serviceChecklists.serviceId, serviceId))
+      .orderBy(schema.serviceChecklists.sortOrder)
+      .all();
+  });
+
+  safeHandle(IPC.SERVICE_CHECKLIST_UPSERT_BULK, (_e, raw) => {
+    const { serviceId, items } = parseArg(
+      checklistUpsertBulkSchema,
+      raw,
+      "service-checklist:upsert-bulk"
+    );
+    const sqlite = getSqlite();
+    const tx = sqlite.transaction(() => {
+      const existing = db
+        .select()
+        .from(schema.serviceChecklists)
+        .where(eq(schema.serviceChecklists.serviceId, serviceId))
+        .all();
+      const keepIds = new Set(
+        items.filter((i) => i.id !== undefined).map((i) => i.id as number)
+      );
+      // Delete rows not present in the payload.
+      for (const e of existing) {
+        if (!keepIds.has(e.id)) {
+          db.delete(schema.serviceChecklists)
+            .where(eq(schema.serviceChecklists.id, e.id))
+            .run();
+        }
+      }
+      // Upsert each payload row preserving submission order via sortOrder
+      // when the caller hasn't supplied one explicitly.
+      items.forEach((item, idx) => {
+        const ord = item.sortOrder ?? idx;
+        if (item.id !== undefined) {
+          db.update(schema.serviceChecklists)
+            .set({
+              documentName: item.documentName,
+              isRequired: item.isRequired,
+              notes: item.notes,
+              sortOrder: ord,
+            })
+            .where(eq(schema.serviceChecklists.id, item.id))
+            .run();
+        } else {
+          db.insert(schema.serviceChecklists)
+            .values({
+              serviceId,
+              documentName: item.documentName,
+              isRequired: item.isRequired,
+              notes: item.notes,
+              sortOrder: ord,
+            })
+            .run();
+        }
+      });
+      return db
+        .select()
+        .from(schema.serviceChecklists)
+        .where(eq(schema.serviceChecklists.serviceId, serviceId))
+        .orderBy(schema.serviceChecklists.sortOrder)
+        .all();
+    });
+    return tx();
+  });
 
   // Invoices — atomic invoice-number generation inside the transaction.
   safeHandle(IPC.INVOICES_LIST, () =>
@@ -589,7 +1114,101 @@ function registerIpcHandlers() {
         .where(eq(schema.centerProfiles.id, 1))
         .run();
 
-      return { id: invoice.id, invoiceNo, customerId, total };
+      return { id: invoice.id, invoiceNo: invoice.invoiceNo };
+    })();
+  });
+
+  safeHandle(IPC.INVOICES_UPDATE, (_e, id, raw) => {
+    const _id = z.number().int().parse(id);
+    const data = parseArg(createInvoiceSchema, raw, "invoices:update");
+    if (data.status && data.status !== "PAID" && data.status !== "PENDING") {
+      throw new Error(
+        "Edit can only save as PAID or PENDING. Use status update for CANCELLED."
+      );
+    }
+    const sqlite = getSqlite();
+
+    return sqlite.transaction(() => {
+      // Fetch the existing invoice to verify it is PENDING
+      const existing = db
+        .select()
+        .from(schema.invoices)
+        .where(eq(schema.invoices.id, _id))
+        .get();
+
+      if (!existing) throw new Error("Invoice not found");
+      if (existing.status !== "PENDING") {
+        throw new Error("Only PENDING invoices can be edited");
+      }
+
+      // Resolve customer
+      let customerId = data.customerId;
+      if (!customerId && data.newCustomer) {
+        const created = db
+          .insert(schema.customers)
+          .values({
+            name: data.newCustomer.name,
+            mobile: data.newCustomer.mobile,
+          })
+          .returning()
+          .get();
+        customerId = created.id;
+      }
+      if (!customerId) throw new Error("customerId or newCustomer required");
+
+      // Compute totals server-side
+      const items = data.items.map((it) => {
+        const rate = it.taxRate ?? 0;
+        const base = it.qty * it.rate;
+        const tax = +(base * (rate / 100)).toFixed(2);
+        return { ...it, taxRate: rate, lineTotal: +(base + tax).toFixed(2), tax };
+      });
+      const subtotal = +items
+        .reduce((s, it) => s + it.qty * it.rate, 0)
+        .toFixed(2);
+      const taxTotal = +items.reduce((s, it) => s + it.tax, 0).toFixed(2);
+      const discount = data.discount ?? 0;
+      const total = +(subtotal + taxTotal - discount).toFixed(2);
+
+      // Update invoice in place
+      db.update(schema.invoices)
+        .set({
+          customerId,
+          subtotal,
+          taxTotal,
+          discount,
+          total,
+          paymentMode: data.paymentMode ?? "Cash",
+          status: data.status ?? "PENDING",
+          notes: data.notes ?? null,
+          customerNotes: data.customerNotes ?? null,
+          // Edits invalidate any previously-printed copy: the user must
+          // re-print or re-export the PDF to reflect the new content.
+          printedAt: null,
+        })
+        .where(eq(schema.invoices.id, _id))
+        .run();
+
+      // Clear existing items and replace
+      db.delete(schema.invoiceItems)
+        .where(eq(schema.invoiceItems.invoiceId, _id))
+        .run();
+
+      for (const it of items) {
+        db.insert(schema.invoiceItems)
+          .values({
+            invoiceId: _id,
+            serviceId: it.serviceId,
+            description: it.description,
+            qty: it.qty,
+            rate: it.rate,
+            taxRate: it.taxRate,
+            lineTotal: it.lineTotal,
+          })
+          .run();
+      }
+
+      return { id: _id, invoiceNo: existing.invoiceNo };
     })();
   });
 
@@ -700,26 +1319,187 @@ function registerIpcHandlers() {
     });
   });
 
-  // Printer
-  safeHandle(IPC.PRINTER_GET_CONFIG, () => printerConfig);
-  safeHandle(IPC.PRINTER_SET_CONFIG, (_e, cfg) => {
-    const parsed = parseArg(
-      z
-        .object({
-          interface: z.string().optional(),
-          type: z.string().optional(),
-          printUpiQr: z.boolean().optional(),
-        })
-        .strict(),
-      cfg,
-      "printer:set-config"
+  // ── Reports — aggregated, lightweight payloads ────────────────────────────
+  const rangeSchema = z.object({ start: z.string(), end: z.string() });
+  const topNSchema = z.object({
+    start: z.string(),
+    end: z.string(),
+    limit: z.number().int().positive().max(50).optional(),
+  });
+
+  function parseRange(raw: unknown) {
+    const { start, end } = parseArg(rangeSchema, raw, "reports:range");
+    const startDate = new Date(start);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(end);
+    endDate.setHours(23, 59, 59, 999);
+    return { startDate, endDate };
+  }
+
+  safeHandle(IPC.REPORTS_SUMMARY, (_e, raw) => {
+    const { startDate, endDate } = parseRange(raw);
+    const inRange = and(
+      gte(schema.invoices.createdAt, startDate),
+      lte(schema.invoices.createdAt, endDate)
     );
-    printerConfig = { ...printerConfig, ...parsed };
-    return { success: true };
+
+    const totals = db
+      .select({
+        invoiceCount: sql<number>`COUNT(*)`.mapWith(Number),
+        subtotal: sql<number>`COALESCE(SUM(${schema.invoices.subtotal}), 0)`.mapWith(Number),
+        taxTotal: sql<number>`COALESCE(SUM(${schema.invoices.taxTotal}), 0)`.mapWith(Number),
+        discount: sql<number>`COALESCE(SUM(${schema.invoices.discount}), 0)`.mapWith(Number),
+        revenue: sql<number>`COALESCE(SUM(${schema.invoices.total}), 0)`.mapWith(Number),
+      })
+      .from(schema.invoices)
+      .where(and(inRange, notCancelled))
+      .get() ?? { invoiceCount: 0, subtotal: 0, taxTotal: 0, discount: 0, revenue: 0 };
+
+    const byStatusRows = db
+      .select({
+        status: schema.invoices.status,
+        count: sql<number>`COUNT(*)`.mapWith(Number),
+        total: sql<number>`COALESCE(SUM(${schema.invoices.total}), 0)`.mapWith(Number),
+      })
+      .from(schema.invoices)
+      .where(inRange)
+      .groupBy(schema.invoices.status)
+      .all();
+
+    const byStatus = {
+      PAID: { count: 0, total: 0 },
+      PENDING: { count: 0, total: 0 },
+      CANCELLED: { count: 0, total: 0 },
+    } as Record<"PAID" | "PENDING" | "CANCELLED", { count: number; total: number }>;
+    for (const row of byStatusRows) {
+      const key = row.status as keyof typeof byStatus;
+      if (byStatus[key]) byStatus[key] = { count: row.count, total: row.total };
+    }
+
+    const byPaymentMode = db
+      .select({
+        paymentMode: schema.invoices.paymentMode,
+        count: sql<number>`COUNT(*)`.mapWith(Number),
+        total: sql<number>`COALESCE(SUM(${schema.invoices.total}), 0)`.mapWith(Number),
+      })
+      .from(schema.invoices)
+      .where(and(inRange, notCancelled))
+      .groupBy(schema.invoices.paymentMode)
+      .all();
+
+    return { totals, byStatus, byPaymentMode };
+  });
+
+  safeHandle(IPC.REPORTS_TOP_CUSTOMERS, (_e, raw) => {
+    const { start, end, limit } = parseArg(topNSchema, raw, "reports:top-customers");
+    const startDate = new Date(start);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(end);
+    endDate.setHours(23, 59, 59, 999);
+
+    const revenueExpr = sql<number>`COALESCE(SUM(${schema.invoices.total}), 0)`
+      .mapWith(Number)
+      .as("revenue");
+
+    return db
+      .select({
+        customerId: schema.customers.id,
+        customerName: schema.customers.name,
+        invoiceCount: sql<number>`COUNT(${schema.invoices.id})`.mapWith(Number),
+        revenue: revenueExpr,
+      })
+      .from(schema.invoices)
+      .innerJoin(
+        schema.customers,
+        eq(schema.invoices.customerId, schema.customers.id)
+      )
+      .where(
+        and(
+          gte(schema.invoices.createdAt, startDate),
+          lte(schema.invoices.createdAt, endDate),
+          notCancelled
+        )
+      )
+      .groupBy(schema.customers.id)
+      .orderBy(desc(revenueExpr))
+      .limit(limit ?? 5)
+      .all();
+  });
+
+  safeHandle(IPC.REPORTS_TOP_SERVICES, (_e, raw) => {
+    const { start, end, limit } = parseArg(topNSchema, raw, "reports:top-services");
+    const startDate = new Date(start);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(end);
+    endDate.setHours(23, 59, 59, 999);
+
+    const revenueExpr = sql<number>`COALESCE(SUM(${schema.invoiceItems.lineTotal}), 0)`
+      .mapWith(Number)
+      .as("revenue");
+
+    return db
+      .select({
+        serviceId: schema.services.id,
+        serviceName: schema.services.name,
+        category: schema.services.category,
+        qty: sql<number>`COALESCE(SUM(${schema.invoiceItems.qty}), 0)`.mapWith(Number),
+        revenue: revenueExpr,
+      })
+      .from(schema.invoiceItems)
+      .innerJoin(
+        schema.invoices,
+        eq(schema.invoiceItems.invoiceId, schema.invoices.id)
+      )
+      .innerJoin(
+        schema.services,
+        eq(schema.invoiceItems.serviceId, schema.services.id)
+      )
+      .where(
+        and(
+          gte(schema.invoices.createdAt, startDate),
+          lte(schema.invoices.createdAt, endDate),
+          notCancelled
+        )
+      )
+      .groupBy(schema.services.id)
+      .orderBy(desc(revenueExpr))
+      .limit(limit ?? 5)
+      .all();
+  });
+
+  safeHandle(IPC.REPORTS_PENDING_DUES, () => {
+    const row = db
+      .select({
+        count: sql<number>`COUNT(*)`.mapWith(Number),
+        total: sql<number>`COALESCE(SUM(${schema.invoices.total}), 0)`.mapWith(Number),
+      })
+      .from(schema.invoices)
+      .where(eq(schema.invoices.status, "PENDING"))
+      .get();
+    return row ?? { count: 0, total: 0 };
+  });
+
+  // Printer
+  safeHandle(IPC.PRINTER_GET_CONFIG, () => {
+    const p = db.select().from(schema.centerProfiles).where(eq(schema.centerProfiles.id, 1)).get();
+    return {
+      interface: p?.printerInterface ?? "tcp://192.168.1.100:9100",
+      type: p?.printerType ?? "EPSON",
+      printUpiQr: p?.printUpiQr ?? false,
+    };
   });
   safeHandle(IPC.PRINTER_LIST, () => scanForPrinters());
-  safeHandle(IPC.PRINTER_TEST, async () => {
-    await printTestPage(printerConfig);
+  safeHandle(IPC.PRINTER_TEST, async (_e, rawCfg) => {
+    let cfg = rawCfg;
+    if (!cfg) {
+      const p = db.select().from(schema.centerProfiles).where(eq(schema.centerProfiles.id, 1)).get();
+      cfg = {
+        interface: p?.printerInterface ?? "tcp://192.168.1.100:9100",
+        type: p?.printerType ?? "EPSON",
+        printUpiQr: p?.printUpiQr ?? false,
+      };
+    }
+    await printTestPage(cfg as any);
     return { success: true };
   });
   safeHandle(IPC.PRINTER_PRINT_RECEIPT, async (_e, rawId) => {
@@ -737,6 +1517,13 @@ function registerIpcHandlers() {
         .from(schema.centerProfiles)
         .where(eq(schema.centerProfiles.id, 1))
         .get() ?? null;
+        
+    const printerConfig = {
+      interface: center?.printerInterface ?? "tcp://192.168.1.100:9100",
+      type: center?.printerType ?? "EPSON",
+      printUpiQr: center?.printUpiQr ?? false,
+    };
+    
     await printReceipt(printerConfig, invoice, center);
     db.update(schema.invoices)
       .set({ printedAt: new Date() })
@@ -746,7 +1533,7 @@ function registerIpcHandlers() {
   });
 
   // Backup
-  safeHandle(IPC.BACKUP_EXPORT, () => {
+  safeHandle(IPC.BACKUP_EXPORT, async () => {
     const backupDir = path.join(app.getPath("documents"), "CSC-Backups");
     if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
     const stamp = new Date()
@@ -754,7 +1541,7 @@ function registerIpcHandlers() {
       .replace(/[:.]/g, "-")
       .split("T")[0];
     const out = path.join(backupDir, `csc_billing_${stamp}.db`);
-    fs.copyFileSync(dbPath, out);
+    await getSqlite().backup(out);
     return { success: true, path: out };
   });
   safeHandle(IPC.BACKUP_IMPORT, async () => {
@@ -767,7 +1554,26 @@ function registerIpcHandlers() {
     if (result.canceled || result.filePaths.length === 0) {
       return { success: false, cancelled: true };
     }
+    
+    // Safety snapshot before overwriting
+    if (fs.existsSync(dbPath)) {
+      await getSqlite().backup(dbPath + ".pre-import.bak");
+    }
+
     closeDatabase();
+    
+    // Safety cleanup: Ensure orphaned WAL/SHM files do not corrupt the imported DB
+    const walPath = dbPath + "-wal";
+    const shmPath = dbPath + "-shm";
+    if (fs.existsSync(walPath)) {
+      fs.unlinkSync(walPath);
+      console.log("[backup] Deleted orphaned WAL file");
+    }
+    if (fs.existsSync(shmPath)) {
+      fs.unlinkSync(shmPath);
+      console.log("[backup] Deleted orphaned SHM file");
+    }
+
     fs.copyFileSync(result.filePaths[0], dbPath);
     initDatabase(dbPath);
     return { success: true, path: result.filePaths[0] };
@@ -782,7 +1588,13 @@ async function performAutoBackup() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").split("T")[0];
   const out = path.join(backupDir, `csc_billing_auto_${stamp}.db`);
   if (fs.existsSync(out)) return;
-  fs.copyFileSync(dbPath, out);
+  
+  try {
+    await getSqlite().backup(out);
+  } catch (err) {
+    console.error("[auto-backup export]", err);
+    return;
+  }
   const files = fs
     .readdirSync(backupDir)
     .filter((f) => f.startsWith("csc_billing_auto_") && f.endsWith(".db"))

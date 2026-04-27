@@ -1,8 +1,9 @@
 // src/app/invoices/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { ipc, IpcError } from "@/lib/ipc";
@@ -10,18 +11,30 @@ import { IPC } from "@/shared/ipc-channels";
 import { useToast } from "@/components/Toast";
 import type { InvoiceDetail } from "@/shared/types";
 import {
+  buildCsv,
+  downloadCsv,
+  CSV_ROW_LIMIT,
+  type CsvColumn,
+} from "@/lib/csv";
+import {
   Search,
   FilePlus,
   FileText,
   Eye,
   Filter,
   ChevronDown,
+  Download,
 } from "lucide-react";
 
 const STATUS_OPTIONS = ["ALL", "PAID", "PENDING", "CANCELLED"] as const;
 
-export default function InvoicesPage() {
+function InvoicesContent() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
+  const customerIdFilter = searchParams.get("customerId");
+
   const [invoices, setInvoices] = useState<InvoiceDetail[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -69,6 +82,7 @@ export default function InvoicesPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return invoices.filter((inv) => {
+      if (customerIdFilter && inv.customerId !== Number(customerIdFilter)) return false;
       if (status !== "ALL" && inv.status !== status) return false;
       if (startDate && inv.createdAt && new Date(inv.createdAt) < new Date(startDate))
         return false;
@@ -84,7 +98,7 @@ export default function InvoicesPage() {
         (inv.customer?.mobile ?? "").toLowerCase().includes(q)
       );
     });
-  }, [invoices, search, status, startDate, endDate]);
+  }, [invoices, search, status, startDate, endDate, customerIdFilter]);
 
   const totalAmount = filtered.reduce((s, inv) => s + inv.total, 0);
   const paidCount = filtered.filter((i) => i.status === "PAID").length;
@@ -102,6 +116,54 @@ export default function InvoicesPage() {
           </p>
         </div>
         <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (filtered.length === 0) {
+                toast("No invoices to export", "info");
+                return;
+              }
+              const columns: CsvColumn<InvoiceDetail>[] = [
+                { header: "invoiceNo", get: (r) => r.invoiceNo },
+                {
+                  header: "createdAt",
+                  get: (r) => (r.createdAt ? new Date(r.createdAt) : null),
+                },
+                { header: "customerName", get: (r) => r.customer?.name ?? "" },
+                {
+                  header: "customerMobile",
+                  get: (r) => r.customer?.mobile ?? "",
+                },
+                { header: "status", get: (r) => r.status },
+                { header: "paymentMode", get: (r) => r.paymentMode },
+                { header: "subtotal", get: (r) => r.subtotal },
+                { header: "taxTotal", get: (r) => r.taxTotal },
+                { header: "discount", get: (r) => r.discount },
+                { header: "total", get: (r) => r.total },
+                { header: "currency", get: () => "INR" },
+              ];
+              const { csv, rowCount, truncated } = buildCsv(filtered, columns);
+              const stamp = new Date().toISOString().split("T")[0];
+              downloadCsv(`invoices_${stamp}.csv`, csv);
+              if (truncated) {
+                toast(
+                  `Exported first ${rowCount.toLocaleString()} of ${filtered.length.toLocaleString()} rows (cap: ${CSV_ROW_LIMIT.toLocaleString()})`,
+                  "info"
+                );
+              } else {
+                toast(`Exported ${rowCount.toLocaleString()} rows`, "success");
+              }
+            }}
+            disabled={loading}
+            className={cn(
+              "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5",
+              "text-[13px] font-medium text-foreground transition-colors hover:bg-background",
+              "disabled:cursor-not-allowed disabled:opacity-60"
+            )}
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </button>
           <Link
             href="/billing/new"
             className={cn(
@@ -205,6 +267,19 @@ export default function InvoicesPage() {
             )}
           />
         </div>
+
+        {customerIdFilter && (
+          <div className="flex items-center gap-2 rounded-md bg-primary/10 px-3 py-1.5 text-sm text-primary">
+            <span className="font-medium">Filtered by Customer ID: {customerIdFilter}</span>
+            <button
+              onClick={() => router.push("/invoices")}
+              className="ml-2 hover:text-primary-dark font-bold"
+              title="Clear Filter"
+            >
+              &times;
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-border bg-card shadow-sm">
@@ -334,5 +409,17 @@ export default function InvoicesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function InvoicesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-48 items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading invoices...</p>
+      </div>
+    }>
+      <InvoicesContent />
+    </Suspense>
   );
 }

@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ToastProvider } from "@/components/Toast";
+import { BridgeStatusBanner } from "@/components/BridgeStatusBanner";
 import {
   LayoutDashboard,
   FilePlus,
@@ -257,6 +258,7 @@ export default function RootLayout({
               style={{ marginLeft: "var(--sidebar-w)" }}
             >
               <TopBar />
+              <BridgeStatusBanner />
               <main className="flex-1 overflow-y-auto bg-background p-7">
                 <div className="mx-auto max-w-7xl">{children}</div>
               </main>
