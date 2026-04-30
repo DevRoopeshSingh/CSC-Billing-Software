@@ -23,6 +23,10 @@ import {
   Plus,
   Wifi,
   WifiOff,
+  Menu,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 
 // ── Navigation Config ────────────────────────────────────────────────────────
@@ -51,6 +55,8 @@ const NAV_SECTIONS = [
 ];
 
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { SidebarProvider, useSidebar } from "@/lib/sidebar-context";
+import { ThemeProvider, useTheme } from "@/lib/theme-context";
 import { LoginScreen } from "@/components/auth/LoginScreen";
 import { SetupScreen } from "@/components/auth/SetupScreen";
 import { LogOut } from "lucide-react";
@@ -60,6 +66,7 @@ function SidebarNav() {
   const pathname = usePathname();
   const [isOnline, setIsOnline] = useState(true);
   const { user } = useAuth();
+  const { isSidebarOpen, isSidebarCollapsed, closeSidebar } = useSidebar();
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -104,22 +111,43 @@ function SidebarNav() {
   ];
 
   return (
-    <aside
-      className={cn(
-        "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border",
-        "bg-gray-900 text-white select-none"
+    <>
+      {/* Mobile Overlay */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={closeSidebar}
+        />
       )}
-      style={{ width: "var(--sidebar-w)" }}
-    >
-      {/* Brand */}
-      <div className="border-b border-white/10 px-5 pb-4 pt-5">
-        <h1 className="text-[15px] font-bold leading-tight text-white">
-          CSC Billing
-        </h1>
-        <span className="mt-0.5 block text-[11px] text-white/45">
-          Local Management System
-        </span>
-      </div>
+
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-gray-900 text-white select-none transition-all duration-300 ease-in-out",
+          isSidebarCollapsed ? "w-[64px]" : "w-[var(--sidebar-w)]",
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        )}
+      >
+        {/* Brand */}
+        <div className="flex h-16 shrink-0 items-center border-b border-white/10 px-5">
+          <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-white font-bold">
+              C
+            </div>
+            <div
+              className={cn(
+                "transition-all duration-300",
+                isSidebarCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+              )}
+            >
+              <h1 className="text-[15px] font-bold leading-tight text-white">
+                CSC Billing
+              </h1>
+              <span className="block text-[11px] text-white/45">
+                Local System
+              </span>
+            </div>
+          </div>
+        </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3">
@@ -131,9 +159,12 @@ function SidebarNav() {
 
           return (
             <div key={section.label} className="mb-1">
-              <p className="px-5 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-wider text-white/30">
-                {section.label}
-              </p>
+              {!isSidebarCollapsed && (
+                <p className="px-5 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-wider text-white/30 truncate">
+                  {section.label}
+                </p>
+              )}
+              {isSidebarCollapsed && <div className="pt-4" />}
               {visibleItems.map((item) => {
                 const active =
                   item.href === "/"
@@ -144,15 +175,19 @@ function SidebarNav() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    title={isSidebarCollapsed ? item.label : undefined}
                     className={cn(
                       "mx-2 mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors",
                       active
                         ? "bg-primary text-white"
-                        : "text-white/70 hover:bg-white/5 hover:text-white"
+                        : "text-white/70 hover:bg-white/5 hover:text-white",
+                      isSidebarCollapsed && "justify-center px-0"
                     )}
                   >
                     <Icon className="h-[18px] w-[18px] shrink-0" />
-                    {item.label}
+                    {!isSidebarCollapsed && (
+                      <span className="truncate">{item.label}</span>
+                    )}
                   </Link>
                 );
               })}
@@ -162,23 +197,64 @@ function SidebarNav() {
       </nav>
 
       {/* Status Footer */}
-      <div className="border-t border-white/10 px-5 py-3">
-        <div className="flex items-center gap-2 text-[13px]">
+      <div className="mt-auto border-t border-white/10 px-5 py-3">
+        <div className={cn("flex items-center gap-2 text-[13px]", isSidebarCollapsed && "justify-center")}>
           {isOnline ? (
-            <Wifi className="h-3.5 w-3.5 text-emerald-400" />
+            <Wifi className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
           ) : (
-            <WifiOff className="h-3.5 w-3.5 text-red-400" />
+            <WifiOff className="h-3.5 w-3.5 shrink-0 text-red-400" />
           )}
-          <span
-            className={cn(
-              isOnline ? "text-white/50" : "font-semibold text-red-400"
-            )}
-          >
-            {isOnline ? "Online" : "Offline Mode"}
-          </span>
+          {!isSidebarCollapsed && (
+            <span
+              className={cn(
+                "truncate",
+                isOnline ? "text-white/50" : "font-semibold text-red-400"
+              )}
+            >
+              {isOnline ? "Online" : "Offline Mode"}
+            </span>
+          )}
         </div>
       </div>
     </aside>
+    </>
+  );
+}
+
+// ── Theme Toggle ─────────────────────────────────────────────────────────────
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const cycleTheme = () => {
+    if (theme === "light") setTheme("dark");
+    else if (theme === "dark") setTheme("system");
+    else setTheme("light");
+  };
+
+  // Prevent hydration mismatch by rendering a generic icon until mounted
+  if (!mounted) {
+    return (
+      <button className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background">
+        <div className="h-[18px] w-[18px]" />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={cycleTheme}
+      className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background"
+      title={`Theme: ${theme.charAt(0).toUpperCase() + theme.slice(1)}`}
+    >
+      {theme === "light" && <Sun className="h-[18px] w-[18px]" />}
+      {theme === "dark" && <Moon className="h-[18px] w-[18px]" />}
+      {theme === "system" && <Monitor className="h-[18px] w-[18px]" />}
+    </button>
   );
 }
 
@@ -187,6 +263,7 @@ function TopBar() {
   const pathname = usePathname();
   const [dateStr, setDateStr] = useState("");
   const { user, logout } = useAuth();
+  const { toggleSidebar } = useSidebar();
 
   useEffect(() => {
     setDateStr(format(new Date(), "EEEE, MMM d, yyyy"));
@@ -212,9 +289,18 @@ function TopBar() {
         "bg-surface [-webkit-app-region:drag]"
       )}
     >
-      <div className="[-webkit-app-region:no-drag]">
-        <h1 className="text-lg font-semibold text-foreground">{pageTitle}</h1>
-        <p className="text-xs text-muted-foreground">{dateStr}</p>
+      <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
+        <button
+          onClick={toggleSidebar}
+          className="mr-2 rounded p-2 hover:bg-muted text-muted-foreground transition-colors"
+          title="Toggle Sidebar (Ctrl+B)"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">{pageTitle}</h1>
+          <p className="text-xs text-muted-foreground">{dateStr}</p>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
@@ -232,6 +318,9 @@ function TopBar() {
             ⌘K
           </kbd>
         </button>
+
+        {/* Theme Toggle */}
+        <ThemeToggle />
 
         {/* Notification */}
         <button
@@ -290,8 +379,9 @@ function TopBar() {
   );
 }
 
-function AppLayout({ children }: { children: React.ReactNode }) {
+function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, isFirstRun, loading } = useAuth();
+  const { isSidebarCollapsed } = useSidebar();
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center bg-background">Loading...</div>;
@@ -309,8 +399,10 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-background">
       <SidebarNav />
       <div
-        className="flex flex-1 flex-col"
-        style={{ marginLeft: "var(--sidebar-w)" }}
+        className={cn(
+          "flex flex-1 flex-col transition-all duration-300 ease-in-out w-full",
+          isSidebarCollapsed ? "lg:ml-[64px]" : "lg:ml-[var(--sidebar-w)]"
+        )}
       >
         <TopBar />
         <BridgeStatusBanner />
@@ -319,6 +411,16 @@ function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </div>
+  );
+}
+
+function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider>
+      <SidebarProvider>
+        <AppLayoutContent>{children}</AppLayoutContent>
+      </SidebarProvider>
+    </ThemeProvider>
   );
 }
 
@@ -335,6 +437,19 @@ export default function RootLayout({
         <meta
           name="description"
           content="Local billing and invoice management for your CSC center"
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                let theme = localStorage.getItem("csc_theme") || "system";
+                if (theme === "system") {
+                  theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+                }
+                document.documentElement.setAttribute("data-theme", theme);
+              } catch (e) {}
+            `,
+          }}
         />
       </head>
       <body>
