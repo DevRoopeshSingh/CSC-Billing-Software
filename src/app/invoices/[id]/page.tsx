@@ -31,6 +31,8 @@ import {
   Pencil,
   FileText,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { PinPromptModal } from "@/components/auth/PinPromptModal";
 
 const STATUS_CLASSES: Record<InvoiceStatus, string> = {
   PAID: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -42,6 +44,7 @@ export default function InvoiceDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const invoiceId = useMemo(() => {
     const n = Number(params?.id);
@@ -51,6 +54,9 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [showPinModal, setShowPinModal] = useState<
+    null | { kind: "delete" } | { kind: "cancel" }
+  >(null);
   const [busy, setBusy] = useState<"status" | "pdf" | "print" | "delete" | null>(
     null
   );
@@ -88,6 +94,12 @@ export default function InvoiceDetailPage() {
 
   const onStatusChange = async (next: InvoiceStatus) => {
     if (!invoice?.id || invoice.status === next) return;
+    if (next === "CANCELLED") {
+      // Cancellation is admin+PIN. Open the modal; the actual mutation runs
+      // from confirmCancel with the PIN forwarded server-side.
+      setShowPinModal({ kind: "cancel" });
+      return;
+    }
     setBusy("status");
     try {
       await ipc(IPC.INVOICES_UPDATE_STATUS, invoice.id, next);
@@ -150,16 +162,39 @@ export default function InvoiceDetailPage() {
     ) {
       return;
     }
+    setShowPinModal({ kind: "delete" });
+  };
+
+  const confirmDelete = async (pin: string) => {
+    if (!invoice?.id) return;
     setBusy("delete");
     try {
-      await ipc(IPC.INVOICES_DELETE, invoice.id);
+      await ipc(IPC.INVOICES_DELETE, invoice.id, pin);
       toast("Invoice deleted", "success");
+      setShowPinModal(null);
       router.push("/invoices");
     } catch (err) {
-      toast(
-        err instanceof IpcError ? err.message : "Failed to delete invoice",
-        "error"
-      );
+      throw err instanceof IpcError
+        ? err
+        : new Error("Failed to delete invoice");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmCancel = async (pin: string) => {
+    if (!invoice?.id) return;
+    setBusy("status");
+    try {
+      await ipc(IPC.INVOICES_UPDATE_STATUS, invoice.id, "CANCELLED", pin);
+      setInvoice({ ...invoice, status: "CANCELLED" });
+      toast("Invoice cancelled", "success");
+      setShowPinModal(null);
+    } catch (err) {
+      throw err instanceof IpcError
+        ? err
+        : new Error("Failed to cancel invoice");
+    } finally {
       setBusy(null);
     }
   };
@@ -232,7 +267,7 @@ export default function InvoiceDetailPage() {
           <div className="relative">
             <select
               value={invoice.status}
-              disabled={busy === "status"}
+              disabled={busy === "status" || user?.role === "viewer"}
               onChange={(e) => onStatusChange(e.target.value as InvoiceStatus)}
               className={cn(
                 "appearance-none rounded-full border px-4 py-1.5 pr-8 text-xs font-semibold",
@@ -247,7 +282,7 @@ export default function InvoiceDetailPage() {
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2" />
           </div>
 
-          {invoice.status === "PENDING" && (
+          {invoice.status === "PENDING" && user?.role !== "viewer" && (
             <Link
               href={`/invoices/${invoice.id}/edit`}
               className={cn(
@@ -296,23 +331,25 @@ export default function InvoiceDetailPage() {
             Print
           </button>
 
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={busy !== null}
-            className={cn(
-              "flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2",
-              "text-[13px] font-medium text-red-700 transition-colors hover:bg-red-100",
-              "disabled:opacity-60"
-            )}
-          >
-            {busy === "delete" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-            Delete
-          </button>
+          {user?.role !== "viewer" && (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={busy !== null}
+              className={cn(
+                "flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2",
+                "text-[13px] font-medium text-red-700 transition-colors hover:bg-red-100",
+                "disabled:opacity-60"
+              )}
+            >
+              {busy === "delete" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Delete
+            </button>
+          )}
         </div>
       </div>
 
@@ -471,6 +508,25 @@ export default function InvoiceDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {showPinModal?.kind === "delete" && (
+        <PinPromptModal
+          onConfirm={confirmDelete}
+          onCancel={() => setShowPinModal(null)}
+          title="Delete Invoice"
+          description="Enter Admin PIN to permanently delete this invoice."
+          confirmLabel="Delete"
+        />
+      )}
+      {showPinModal?.kind === "cancel" && (
+        <PinPromptModal
+          onConfirm={confirmCancel}
+          onCancel={() => setShowPinModal(null)}
+          title="Cancel Invoice"
+          description="Cancellation removes this invoice from revenue totals. Enter Admin PIN to authorize."
+          confirmLabel="Cancel Invoice"
+        />
       )}
     </div>
   );

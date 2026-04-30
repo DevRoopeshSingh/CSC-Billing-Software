@@ -19,6 +19,8 @@ import {
   Trash2,
   FileText,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { PinPromptModal } from "@/components/auth/PinPromptModal";
 
 type FormState = {
   name: string;
@@ -63,6 +65,8 @@ export default function CustomersPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const { user } = useAuth();
 
   const loadCustomers = useCallback(
     async (q: string) => {
@@ -147,17 +151,21 @@ export default function CustomersPage() {
       return;
     }
     setDeletingId(customer.id);
+    setShowPinModal(true);
+  };
+
+  const confirmDelete = async (pin: string) => {
+    if (!deletingId) return;
     try {
-      await ipc(IPC.CUSTOMERS_DELETE, customer.id);
+      await ipc(IPC.CUSTOMERS_DELETE, deletingId, pin);
       toast("Customer deleted", "success");
       loadCustomers(search);
-    } catch (err) {
-      toast(
-        err instanceof IpcError ? err.message : "Failed to delete customer",
-        "error"
-      );
-    } finally {
       setDeletingId(null);
+      setShowPinModal(false);
+    } catch (err) {
+      // Re-throw so PinPromptModal can show the error and let the user
+      // retry without dismissing.
+      throw err instanceof IpcError ? err : new Error("Failed to delete customer");
     }
   };
 
@@ -171,25 +179,29 @@ export default function CustomersPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Link
-            href="/billing/new"
-            className={cn(
-              "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5",
-              "text-[13px] font-medium text-foreground transition-colors hover:bg-background"
-            )}
-          >
-            New Invoice
-          </Link>
-          <button
-            onClick={openAdd}
-            className={cn(
-              "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
-              "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
-            )}
-          >
-            <UserPlus className="h-4 w-4" />
-            Add Customer
-          </button>
+          {user?.role !== "viewer" && (
+            <Link
+              href="/billing/new"
+              className={cn(
+                "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5",
+                "text-[13px] font-medium text-foreground transition-colors hover:bg-background"
+              )}
+            >
+              New Invoice
+            </Link>
+          )}
+          {user?.role !== "viewer" && (
+            <button
+              onClick={openAdd}
+              className={cn(
+                "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
+                "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
+              )}
+            >
+              <UserPlus className="h-4 w-4" />
+              Add Customer
+            </button>
+          )}
         </div>
       </div>
 
@@ -323,39 +335,43 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Link
-                          href={`/billing/new?customerId=${c.id}`}
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5",
-                            "text-xs font-medium text-foreground transition-colors hover:bg-background"
-                          )}
-                        >
-                          New Bill
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(c)}
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-lg border border-border p-1.5",
-                            "text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                          )}
-                          title="Edit"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(c)}
-                          disabled={deletingId === c.id}
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 p-1.5",
-                            "text-red-700 transition-colors hover:bg-red-100",
-                            "disabled:opacity-50"
-                          )}
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {user?.role !== "viewer" && (
+                          <>
+                            <Link
+                              href={`/billing/new?customerId=${c.id}`}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5",
+                                "text-xs font-medium text-foreground transition-colors hover:bg-background"
+                              )}
+                            >
+                              New Bill
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(c)}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg border border-border p-1.5",
+                                "text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                              )}
+                              title="Edit"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(c)}
+                              disabled={deletingId === c.id}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 p-1.5",
+                                "text-red-700 transition-colors hover:bg-red-100",
+                                "disabled:opacity-50"
+                              )}
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -522,6 +538,19 @@ export default function CustomersPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {showPinModal && (
+        <PinPromptModal
+          onConfirm={confirmDelete}
+          onCancel={() => {
+            setShowPinModal(false);
+            setDeletingId(null);
+          }}
+          title="Delete Customer"
+          description="Enter Admin PIN to permanently delete this customer."
+          confirmLabel="Delete"
+        />
       )}
     </div>
   );

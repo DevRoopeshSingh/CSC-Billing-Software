@@ -21,6 +21,7 @@ interface Props {
   onPatch: (id: number, patch: Partial<Service>) => Promise<void>;
   onEdit: (service: Service) => void;
   onDelete: (id: number) => void;
+  readOnly?: boolean;
 }
 
 export function ServicesTable({
@@ -32,6 +33,7 @@ export function ServicesTable({
   onPatch,
   onEdit,
   onDelete,
+  readOnly = false,
 }: Props) {
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm">
@@ -44,7 +46,8 @@ export function ServicesTable({
                   type="checkbox"
                   checked={allSelected && services.length > 0}
                   onChange={onToggleSelectAll}
-                  className="h-4 w-4 rounded border-border accent-primary"
+                  disabled={readOnly}
+                  className="h-4 w-4 rounded border-border accent-primary disabled:opacity-50"
                   aria-label="Select all"
                 />
               </th>
@@ -85,8 +88,9 @@ export function ServicesTable({
                     type="checkbox"
                     checked={selection.has(s.id!)}
                     onChange={() => onToggleSelect(s.id!)}
+                    disabled={readOnly}
                     aria-label={`Select ${s.name}`}
-                    className="h-4 w-4 rounded border-border accent-primary"
+                    className="h-4 w-4 rounded border-border accent-primary disabled:opacity-50"
                   />
                 </td>
                 <td className="px-4 py-3">
@@ -110,6 +114,7 @@ export function ServicesTable({
                       step={1}
                       ariaLabel={`Edit price for ${s.name}`}
                       onCommit={(n) => onPatch(s.id!, { defaultPrice: n })}
+                      readOnly={readOnly}
                     />
                     {s.priceIsStartingFrom && (
                       <span
@@ -131,15 +136,17 @@ export function ServicesTable({
                       step={0.5}
                       ariaLabel={`Edit tax for ${s.name}`}
                       onCommit={(n) => onPatch(s.id!, { taxRate: n })}
+                      readOnly={readOnly}
                     />
                   </div>
                 </td>
                 <td className="px-4 py-3 text-center">
                   <button
                     type="button"
-                    onClick={() => onPatch(s.id!, { isActive: !s.isActive })}
+                    onClick={() => !readOnly && onPatch(s.id!, { isActive: !s.isActive })}
+                    disabled={readOnly}
                     title={s.isActive ? "Deactivate" : "Activate"}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium disabled:opacity-70"
                   >
                     {s.isActive ? (
                       <>
@@ -158,10 +165,11 @@ export function ServicesTable({
                   <button
                     type="button"
                     onClick={() =>
-                      onPatch(s.id!, { isBookmarked: !s.isBookmarked })
+                      !readOnly && onPatch(s.id!, { isBookmarked: !s.isBookmarked })
                     }
+                    disabled={readOnly}
                     title={s.isBookmarked ? "Remove bookmark" : "Bookmark"}
-                    className="inline-flex"
+                    className="inline-flex disabled:opacity-70"
                   >
                     {s.isBookmarked ? (
                       <BookmarkCheck className="h-4 w-4 text-amber-500" />
@@ -172,22 +180,26 @@ export function ServicesTable({
                 </td>
                 <td className="px-4 py-3 text-center">
                   <div className="flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onEdit(s)}
-                      className="rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-background hover:text-foreground"
-                      title="Edit"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(s.id!)}
-                      className="rounded-lg border border-border p-1.5 text-muted-foreground hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {!readOnly && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onEdit(s)}
+                          className="rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                          title="Edit"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(s.id!)}
+                          className="rounded-lg border border-border p-1.5 text-muted-foreground hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>

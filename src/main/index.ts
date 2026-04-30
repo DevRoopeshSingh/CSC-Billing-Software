@@ -16,7 +16,7 @@ import {
   customerSchema,
   serviceSchema,
   createInvoiceSchema,
-  centerProfileSchema,
+  centerProfileUpdateSchema,
   InvoiceStatus,
   servicesImportSchema,
   bulkUpdateServicesSchema,
@@ -26,9 +26,33 @@ import {
   type ServicesImportResult,
   type Service,
   type BulkDeleteServicesResult,
+  loginRequestSchema,
+  setupRequestSchema,
+  userUpdateSchema,
+  createUserSchema,
+  setPinSchema,
+  changePasswordSchema,
+  resetPasswordByPinSchema,
 } from "../shared/types";
 import { SERVICE_CATEGORIES } from "../config/categories";
 import { parseCsv } from "../lib/csv";
+import { hashPin, verifyPin } from "../lib/pin";
+import {
+  createSession,
+  getSession,
+  revokeSession,
+  revokeUserSessions,
+  updateUserRole,
+  type Role,
+  type Session,
+} from "./sessions";
+import {
+  requireAdminPin,
+  assertNotLastAdmin,
+  checkLoginRateLimit,
+  recordLoginFailure,
+  clearLoginFailures,
+} from "./auth-guards";
 import { scanForPrinters } from "./printerScan";
 import { generateInvoicePdf } from "./invoicePdf";
 import { printReceipt, printTestPage } from "./printerReceipt";
@@ -51,15 +75,38 @@ let digestShownToday = "";
 const notCancelled = sql`${schema.invoices.status} != 'CANCELLED'`;
 
 // ── Safe IPC wrapper ─────────────────────────────────────────────────────────
-type Handler = (
-  event: IpcMainInvokeEvent,
+// Every handler declares its access policy. The renderer's ipc() helper
+// transparently injects the session token as the first arg of every invoke,
+// so handlers receive (ctx, ...userArgs). For "public" handlers the token slot
+// is ignored. For "session" handlers, the wrapper resolves the token to a
+// Session and rejects with "Not authenticated" / "Forbidden" before the
+// handler body runs — this is the trust boundary, not the renderer.
+
+interface HandlerContext {
+  event: IpcMainInvokeEvent;
+  session: Session | null;
+}
+
+type Access =
+  | { auth: "public" }
+  | { auth: "session"; roles: readonly Role[] };
+
+type RoledHandler = (
+  ctx: HandlerContext,
   ...args: unknown[]
 ) => unknown | Promise<unknown>;
 
-function safeHandle(channel: string, handler: Handler) {
-  ipcMain.handle(channel, async (event, ...args) => {
+function safeHandle(channel: string, access: Access, handler: RoledHandler) {
+  ipcMain.handle(channel, async (event, token, ...args) => {
     try {
-      return await handler(event, ...args);
+      let session: Session | null = null;
+      if (access.auth === "session") {
+        const s = getSession(token);
+        if (!s) throw new Error("Not authenticated");
+        if (!access.roles.includes(s.role)) throw new Error("Forbidden");
+        session = s;
+      }
+      return await handler({ event, session }, ...args);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[IPC ${channel}]`, err);
@@ -67,6 +114,10 @@ function safeHandle(channel: string, handler: Handler) {
     }
   });
 }
+
+const ANY_AUTHED: readonly Role[] = ["admin", "staff", "viewer"];
+const STAFF_PLUS: readonly Role[] = ["admin", "staff"];
+const ADMIN_ONLY: readonly Role[] = ["admin"];
 
 // Parse the first positional arg with a Zod schema; on failure, throw so
 // safeHandle converts it into an { error } response.
@@ -302,6 +353,15 @@ function bootstrapDatabase() {
       operating_hours TEXT NOT NULL DEFAULT '',
       center_description TEXT NOT NULL DEFAULT ''
     );
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE,
+      email TEXT,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'viewer',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS customers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -394,6 +454,20 @@ function bootstrapDatabase() {
     CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id);
     CREATE INDEX IF NOT EXISTS idx_services_category_sort ON services(category, sort_order);
   `);
+
+  // Migrations for audit fields
+  const addAuditFields = (tableName: string) => {
+    const tableCols = sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string }[];
+    const colNames = new Set(tableCols.map(c => c.name));
+    if (!colNames.has("created_by")) {
+      sqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN created_by INTEGER REFERENCES users(id)`);
+    }
+    if (!colNames.has("updated_by")) {
+      sqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN updated_by INTEGER REFERENCES users(id)`);
+    }
+  };
+
+  ["customers", "services", "invoices", "leads", "faq_entries"].forEach(addAuditFields);
 
   // Migration: services schema additions are additive only and idempotent.
   const cols = sqlite
@@ -565,165 +639,568 @@ function registerIpcHandlers() {
   const db = getDb();
 
   // App
-  safeHandle(IPC.APP_VERSION, () => app.getVersion());
-  safeHandle(IPC.APP_DB_PATH, () => dbPath);
+  safeHandle(IPC.APP_VERSION, { auth: "public" }, () => app.getVersion());
+  safeHandle(IPC.APP_DB_PATH, { auth: "public" }, () => dbPath);
+
+  // ── Auth & Users ─────────────────────────────────────────────────────────
+  safeHandle(IPC.USERS_CHECK_FIRST_RUN, { auth: "public" }, () => {
+    const count = db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.users)
+      .get();
+    return count?.count === 0;
+  });
+
+  safeHandle(IPC.USERS_SETUP_ADMIN, { auth: "public" }, async (_ctx, raw) => {
+    const data = parseArg(setupRequestSchema, raw, "users:setup-admin");
+    const passwordHash = await hashPin(data.password);
+    const pinHash = await hashPin(data.adminPin);
+    const sqlite = getSqlite();
+    const created = sqlite.transaction(() => {
+      const count = db
+        .select({ count: sql<number>`count(*)` })
+        .from(schema.users)
+        .get();
+      if (count?.count && count.count > 0) {
+        throw new Error("Admin already setup");
+      }
+      const u = db
+        .insert(schema.users)
+        .values({
+          username: data.username,
+          passwordHash,
+          role: "admin",
+          isActive: true,
+        })
+        .returning()
+        .get();
+      db.update(schema.centerProfiles)
+        .set({ pinHash })
+        .where(eq(schema.centerProfiles.id, 1))
+        .run();
+      return u;
+    })();
+    const role = created.role as Role;
+    const token = createSession(created.id, role);
+    return {
+      token,
+      user: { id: created.id, username: created.username, role },
+    };
+  });
+
+  safeHandle(IPC.USERS_LOGIN, { auth: "public" }, async (_ctx, raw) => {
+    const data = parseArg(loginRequestSchema, raw, "users:login");
+    checkLoginRateLimit(data.username);
+    const user = db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.username, data.username))
+      .get();
+    if (!user || !user.isActive) {
+      recordLoginFailure(data.username);
+      throw new Error("Invalid username or password");
+    }
+    const isValid = await verifyPin(data.password, user.passwordHash);
+    if (!isValid) {
+      recordLoginFailure(data.username);
+      throw new Error("Invalid username or password");
+    }
+    clearLoginFailures(data.username);
+    const role = user.role as Role;
+    const token = createSession(user.id, role);
+    return {
+      token,
+      user: { id: user.id, username: user.username, role },
+    };
+  });
+
+  // Logout: revokes the supplied session token. Public so it works even if
+  // the token has expired; the renderer passes it as a regular user arg.
+  safeHandle(IPC.USERS_LOGOUT, { auth: "public" }, (_ctx, sessionToken) => {
+    revokeSession(sessionToken);
+    return { success: true };
+  });
+
+  // Resume: re-reads the user from DB to return the canonical role. This is
+  // what makes localStorage tampering harmless — the renderer can lie about
+  // who they are, but the resume endpoint authoritatively says otherwise.
+  safeHandle(
+    IPC.USERS_RESUME_SESSION,
+    { auth: "public" },
+    (_ctx, sessionToken) => {
+      const s = getSession(sessionToken);
+      if (!s) return null;
+      const user = db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.id, s.userId))
+        .get();
+      if (!user || !user.isActive) {
+        revokeSession(sessionToken);
+        return null;
+      }
+      if (user.role !== s.role) {
+        revokeSession(sessionToken);
+        return null;
+      }
+      return {
+        id: user.id,
+        username: user.username,
+        role: user.role as Role,
+      };
+    }
+  );
+
+  safeHandle(
+    IPC.USERS_LIST,
+    { auth: "session", roles: ADMIN_ONLY },
+    () => {
+      return db
+        .select({
+          id: schema.users.id,
+          username: schema.users.username,
+          email: schema.users.email,
+          role: schema.users.role,
+          isActive: schema.users.isActive,
+          createdAt: schema.users.createdAt,
+        })
+        .from(schema.users)
+        .all();
+    }
+  );
+
+  safeHandle(
+    IPC.USERS_CREATE,
+    { auth: "session", roles: ADMIN_ONLY },
+    async (_ctx, raw) => {
+      const data = parseArg(createUserSchema, raw, "users:create");
+      const passwordHash = await hashPin(data.password);
+      const user = db
+        .insert(schema.users)
+        .values({
+          username: data.username,
+          email: data.email ?? null,
+          passwordHash,
+          role: data.role,
+          isActive: data.isActive,
+        })
+        .returning()
+        .get();
+      return {
+        id: user.id,
+        username: user.username,
+        role: user.role as Role,
+      };
+    }
+  );
+
+  safeHandle(
+    IPC.USERS_UPDATE,
+    { auth: "session", roles: ADMIN_ONLY },
+    (ctx, id, raw) => {
+      const _id = z.number().int().parse(id);
+      const data = parseArg(userUpdateSchema, raw, "users:update");
+      const session = ctx.session!;
+
+      if (_id === session.userId) {
+        if (data.role !== undefined && data.role !== session.role) {
+          throw new Error("Cannot change your own role.");
+        }
+        if (data.isActive === false) {
+          throw new Error("Cannot disable your own account.");
+        }
+      }
+
+      const sqlite = getSqlite();
+      return sqlite.transaction(() => {
+        const willDemote = data.role !== undefined && data.role !== "admin";
+        const willDisable = data.isActive === false;
+        if (willDemote) assertNotLastAdmin(_id, { kind: "demote" });
+        if (willDisable) assertNotLastAdmin(_id, { kind: "disable" });
+
+        const updated = db
+          .update(schema.users)
+          .set({
+            ...(data.email !== undefined ? { email: data.email } : {}),
+            ...(data.role !== undefined ? { role: data.role } : {}),
+            ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+          })
+          .where(eq(schema.users.id, _id))
+          .returning()
+          .get();
+
+        if (willDisable) revokeUserSessions(_id);
+        else if (data.role !== undefined)
+          updateUserRole(_id, data.role as Role);
+
+        return updated;
+      })();
+    }
+  );
+
+  safeHandle(
+    IPC.USERS_DELETE,
+    { auth: "session", roles: ADMIN_ONLY },
+    (ctx, id, pin) => {
+      const _id = z.number().int().parse(id);
+      const session = ctx.session!;
+      if (_id === session.userId) {
+        throw new Error("Cannot delete your own account.");
+      }
+      requireAdminPin(pin);
+      const sqlite = getSqlite();
+      sqlite.transaction(() => {
+        assertNotLastAdmin(_id, { kind: "delete" });
+        db.delete(schema.users).where(eq(schema.users.id, _id)).run();
+      })();
+      revokeUserSessions(_id);
+      return { success: true };
+    }
+  );
+
+  safeHandle(
+    IPC.USERS_CHANGE_PASSWORD,
+    { auth: "session", roles: ANY_AUTHED },
+    async (ctx, raw) => {
+      const data = parseArg(changePasswordSchema, raw, "users:change-password");
+      const session = ctx.session!;
+      const isSelf = data.userId === session.userId;
+
+      if (!isSelf && session.role !== "admin") {
+        throw new Error("Forbidden");
+      }
+      if (isSelf) {
+        if (!data.oldPassword) {
+          throw new Error("Current password required.");
+        }
+        const me = db
+          .select()
+          .from(schema.users)
+          .where(eq(schema.users.id, session.userId))
+          .get();
+        if (!me) throw new Error("User not found");
+        const ok = await verifyPin(data.oldPassword, me.passwordHash);
+        if (!ok) throw new Error("Current password is incorrect.");
+      }
+      const passwordHash = await hashPin(data.newPassword);
+      db.update(schema.users)
+        .set({ passwordHash })
+        .where(eq(schema.users.id, data.userId))
+        .run();
+      if (!isSelf) revokeUserSessions(data.userId);
+      return { success: true };
+    }
+  );
+
+  // Forgot-password reset, gated by the global Admin PIN. Public endpoint
+  // (the user is locked out, so they have no session). The PIN is the
+  // authorization factor; rate-limited per username under the same lockout
+  // policy as login so a stolen PIN cannot be brute-forced silently here.
+  // After a successful reset all sessions for the target user are revoked.
+  safeHandle(
+    IPC.USERS_RESET_PASSWORD_BY_PIN,
+    { auth: "public" },
+    async (_ctx, raw) => {
+      const data = parseArg(
+        resetPasswordByPinSchema,
+        raw,
+        "users:reset-password-by-pin"
+      );
+      checkLoginRateLimit(data.username);
+
+      const profile = db
+        .select({ pinHash: schema.centerProfiles.pinHash })
+        .from(schema.centerProfiles)
+        .where(eq(schema.centerProfiles.id, 1))
+        .get();
+      if (!profile?.pinHash) {
+        // Fail closed if no PIN was ever set — don't grant a free reset.
+        recordLoginFailure(data.username);
+        throw new Error("Admin PIN not configured. Reset unavailable.");
+      }
+      const pinOk = await verifyPin(data.adminPin, profile.pinHash);
+      if (!pinOk) {
+        recordLoginFailure(data.username);
+        throw new Error("Incorrect admin PIN.");
+      }
+
+      const user = db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.username, data.username))
+        .get();
+      if (!user || !user.isActive) {
+        recordLoginFailure(data.username);
+        throw new Error("No active user with that username.");
+      }
+
+      const passwordHash = await hashPin(data.newPassword);
+      db.update(schema.users)
+        .set({ passwordHash })
+        .where(eq(schema.users.id, user.id))
+        .run();
+      revokeUserSessions(user.id);
+      clearLoginFailures(data.username);
+      return { success: true };
+    }
+  );
+
+  // Set or rotate the global Admin PIN. Admin only; if a PIN already exists,
+  // the caller must supply the current PIN — even an admin shouldn't be able
+  // to silently rotate the gate that protects their own destructive actions.
+  safeHandle(
+    IPC.AUTH_SET_PIN,
+    { auth: "session", roles: ADMIN_ONLY },
+    async (_ctx, raw) => {
+      const data = parseArg(setPinSchema, raw, "auth:set-pin");
+      const profile = db
+        .select({ pinHash: schema.centerProfiles.pinHash })
+        .from(schema.centerProfiles)
+        .where(eq(schema.centerProfiles.id, 1))
+        .get();
+      if (profile?.pinHash) {
+        if (!data.currentPin) throw new Error("Current PIN required");
+        const ok = await verifyPin(data.currentPin, profile.pinHash);
+        if (!ok) throw new Error("Current PIN is incorrect");
+      }
+      const newHash = await hashPin(data.newPin);
+      db.update(schema.centerProfiles)
+        .set({ pinHash: newHash })
+        .where(eq(schema.centerProfiles.id, 1))
+        .run();
+      return { success: true };
+    }
+  );
 
   // Center profile — single-row table (id = 1).
-  safeHandle(IPC.CENTER_GET, () =>
-    db.select().from(schema.centerProfiles).get()
+  safeHandle(
+    IPC.CENTER_GET,
+    { auth: "session", roles: ANY_AUTHED },
+    () => db.select().from(schema.centerProfiles).get()
   );
-  safeHandle(IPC.CENTER_UPDATE, (_e, raw) => {
-    const data = parseArg(
-      centerProfileSchema.partial(),
-      raw,
-      "center:update"
-    );
-    db.update(schema.centerProfiles)
-      .set(data)
-      .where(eq(schema.centerProfiles.id, 1))
-      .run();
-    return db.select().from(schema.centerProfiles).get();
-  });
+  safeHandle(
+    IPC.CENTER_UPDATE,
+    { auth: "session", roles: ADMIN_ONLY },
+    (_ctx, raw) => {
+      // centerProfileUpdateSchema explicitly omits pinHash and invoiceNumber:
+      // a renderer cannot wipe the PIN or reset the invoice counter through
+      // this endpoint.
+      const data = parseArg(
+        centerProfileUpdateSchema,
+        raw,
+        "center:update"
+      );
+      db.update(schema.centerProfiles)
+        .set(data)
+        .where(eq(schema.centerProfiles.id, 1))
+        .run();
+      return db.select().from(schema.centerProfiles).get();
+    }
+  );
 
   // Customers
-  safeHandle(IPC.CUSTOMERS_LIST, () =>
-    db
-      .select({
-        ...getTableColumns(schema.customers),
-        invoiceCount: sql<number>`count(${schema.invoices.id})`.mapWith(Number),
-        totalBilled: sql<number>`COALESCE(sum(${schema.invoices.total}), 0)`.mapWith(
-          Number
-        ),
-      })
-      .from(schema.customers)
-      .leftJoin(
-        schema.invoices,
-        and(eq(schema.customers.id, schema.invoices.customerId), notCancelled)
-      )
-      .groupBy(schema.customers.id)
-      .all()
+  safeHandle(
+    IPC.CUSTOMERS_LIST,
+    { auth: "session", roles: ANY_AUTHED },
+    () =>
+      db
+        .select({
+          ...getTableColumns(schema.customers),
+          invoiceCount: sql<number>`count(${schema.invoices.id})`.mapWith(Number),
+          totalBilled: sql<number>`COALESCE(sum(${schema.invoices.total}), 0)`.mapWith(
+            Number
+          ),
+        })
+        .from(schema.customers)
+        .leftJoin(
+          schema.invoices,
+          and(eq(schema.customers.id, schema.invoices.customerId), notCancelled)
+        )
+        .groupBy(schema.customers.id)
+        .all()
   );
-  safeHandle(IPC.CUSTOMERS_GET, (_e, id) =>
-    db
-      .select()
-      .from(schema.customers)
-      .where(eq(schema.customers.id, z.number().int().parse(id)))
-      .get()
+  safeHandle(
+    IPC.CUSTOMERS_GET,
+    { auth: "session", roles: ANY_AUTHED },
+    (_ctx, id) =>
+      db
+        .select()
+        .from(schema.customers)
+        .where(eq(schema.customers.id, z.number().int().parse(id)))
+        .get()
   );
-  safeHandle(IPC.CUSTOMERS_CREATE, (_e, raw) => {
-    const data = parseArg(
-      customerSchema.omit({ id: true }),
-      raw,
-      "customers:create"
-    );
-    return db.insert(schema.customers).values(data).returning().get();
-  });
-  safeHandle(IPC.CUSTOMERS_UPDATE, (_e, id, raw) => {
-    const _id = z.number().int().parse(id);
-    const data = parseArg(
-      customerSchema.partial(),
-      raw,
-      "customers:update"
-    );
-    return db
-      .update(schema.customers)
-      .set(data)
-      .where(eq(schema.customers.id, _id))
-      .returning()
-      .get();
-  });
-  safeHandle(IPC.CUSTOMERS_DELETE, (_e, id) => {
-    const _id = z.number().int().parse(id);
-    db.delete(schema.customers)
-      .where(eq(schema.customers.id, _id))
-      .run();
-    return { success: true };
-  });
-  safeHandle(IPC.CUSTOMERS_SEARCH, (_e, query) => {
-    const q = z.string().parse(query);
-    const pattern = `%${q}%`;
-    return db
-      .select({
-        ...getTableColumns(schema.customers),
-        invoiceCount: sql<number>`count(${schema.invoices.id})`.mapWith(Number),
-        totalBilled: sql<number>`COALESCE(sum(${schema.invoices.total}), 0)`.mapWith(
-          Number
-        ),
-      })
-      .from(schema.customers)
-      .leftJoin(
-        schema.invoices,
-        and(eq(schema.customers.id, schema.invoices.customerId), notCancelled)
-      )
-      .where(
-        sql`${schema.customers.name} LIKE ${pattern} OR ${schema.customers.mobile} LIKE ${pattern}`
-      )
-      .groupBy(schema.customers.id)
-      .all();
-  });
+  safeHandle(
+    IPC.CUSTOMERS_CREATE,
+    { auth: "session", roles: STAFF_PLUS },
+    (ctx, raw) => {
+      const data = parseArg(
+        customerSchema.omit({ id: true, createdBy: true, updatedBy: true }),
+        raw,
+        "customers:create"
+      );
+      const userId = ctx.session!.userId;
+      return db
+        .insert(schema.customers)
+        .values({ ...data, createdBy: userId, updatedBy: userId })
+        .returning()
+        .get();
+    }
+  );
+  safeHandle(
+    IPC.CUSTOMERS_UPDATE,
+    { auth: "session", roles: STAFF_PLUS },
+    (ctx, id, raw) => {
+      const _id = z.number().int().parse(id);
+      const data = parseArg(
+        customerSchema.partial().omit({ createdBy: true, updatedBy: true }),
+        raw,
+        "customers:update"
+      );
+      const userId = ctx.session!.userId;
+      return db
+        .update(schema.customers)
+        .set({ ...data, updatedBy: userId })
+        .where(eq(schema.customers.id, _id))
+        .returning()
+        .get();
+    }
+  );
+  safeHandle(
+    IPC.CUSTOMERS_DELETE,
+    { auth: "session", roles: ADMIN_ONLY },
+    (_ctx, id, pin) => {
+      const _id = z.number().int().parse(id);
+      requireAdminPin(pin);
+      db.delete(schema.customers)
+        .where(eq(schema.customers.id, _id))
+        .run();
+      return { success: true };
+    }
+  );
+  safeHandle(
+    IPC.CUSTOMERS_SEARCH,
+    { auth: "session", roles: ANY_AUTHED },
+    (_ctx, query) => {
+      const q = z.string().parse(query);
+      const pattern = `%${q}%`;
+      return db
+        .select({
+          ...getTableColumns(schema.customers),
+          invoiceCount: sql<number>`count(${schema.invoices.id})`.mapWith(Number),
+          totalBilled: sql<number>`COALESCE(sum(${schema.invoices.total}), 0)`.mapWith(
+            Number
+          ),
+        })
+        .from(schema.customers)
+        .leftJoin(
+          schema.invoices,
+          and(eq(schema.customers.id, schema.invoices.customerId), notCancelled)
+        )
+        .where(
+          sql`${schema.customers.name} LIKE ${pattern} OR ${schema.customers.mobile} LIKE ${pattern}`
+        )
+        .groupBy(schema.customers.id)
+        .all();
+    }
+  );
 
   // Services
-  safeHandle(IPC.SERVICES_LIST, () =>
-    db.select().from(schema.services).all()
+  safeHandle(
+    IPC.SERVICES_LIST,
+    { auth: "session", roles: ANY_AUTHED },
+    () => db.select().from(schema.services).all()
   );
-  safeHandle(IPC.SERVICES_GET, (_e, id) =>
-    db
-      .select()
-      .from(schema.services)
-      .where(eq(schema.services.id, z.number().int().parse(id)))
-      .get()
+  safeHandle(
+    IPC.SERVICES_GET,
+    { auth: "session", roles: ANY_AUTHED },
+    (_ctx, id) =>
+      db
+        .select()
+        .from(schema.services)
+        .where(eq(schema.services.id, z.number().int().parse(id)))
+        .get()
   );
-  safeHandle(IPC.SERVICES_CREATE, (_e, raw) => {
-    const data = parseArg(
-      serviceSchema.omit({ id: true }),
-      raw,
-      "services:create"
-    );
-    return db.insert(schema.services).values(data).returning().get();
-  });
-  safeHandle(IPC.SERVICES_UPDATE, (_e, id, raw) => {
-    const _id = z.number().int().parse(id);
-    const data = parseArg(serviceSchema.partial(), raw, "services:update");
-    return db
-      .update(schema.services)
-      .set(data)
-      .where(eq(schema.services.id, _id))
-      .returning()
-      .get();
-  });
-  safeHandle(IPC.SERVICES_DELETE, (_e, id) => {
-    const _id = z.number().int().parse(id);
-    db.delete(schema.services)
-      .where(eq(schema.services.id, _id))
-      .run();
-    return { success: true };
-  });
-  safeHandle(IPC.SERVICES_TOGGLE_BOOKMARK, (_e, id) => {
-    const _id = z.number().int().parse(id);
-    const svc = db
-      .select()
-      .from(schema.services)
-      .where(eq(schema.services.id, _id))
-      .get();
-    if (!svc) throw new Error("Service not found");
-    return db
-      .update(schema.services)
-      .set({ isBookmarked: !svc.isBookmarked })
-      .where(eq(schema.services.id, _id))
-      .returning()
-      .get();
-  });
-  safeHandle(IPC.SERVICES_GET_BOOKMARKED, () =>
-    db
-      .select()
-      .from(schema.services)
-      .where(
-        and(
-          eq(schema.services.isBookmarked, true),
-          eq(schema.services.isActive, true)
+  safeHandle(
+    IPC.SERVICES_CREATE,
+    { auth: "session", roles: ADMIN_ONLY },
+    (ctx, raw) => {
+      const data = parseArg(
+        serviceSchema.omit({ id: true, createdBy: true, updatedBy: true }),
+        raw,
+        "services:create"
+      );
+      const userId = ctx.session!.userId;
+      return db
+        .insert(schema.services)
+        .values({ ...data, createdBy: userId, updatedBy: userId })
+        .returning()
+        .get();
+    }
+  );
+  safeHandle(
+    IPC.SERVICES_UPDATE,
+    { auth: "session", roles: ADMIN_ONLY },
+    (ctx, id, raw) => {
+      const _id = z.number().int().parse(id);
+      const data = parseArg(
+        serviceSchema.partial().omit({ createdBy: true, updatedBy: true }),
+        raw,
+        "services:update"
+      );
+      const userId = ctx.session!.userId;
+      return db
+        .update(schema.services)
+        .set({ ...data, updatedBy: userId })
+        .where(eq(schema.services.id, _id))
+        .returning()
+        .get();
+    }
+  );
+  safeHandle(
+    IPC.SERVICES_DELETE,
+    { auth: "session", roles: ADMIN_ONLY },
+    (_ctx, id, pin) => {
+      const _id = z.number().int().parse(id);
+      requireAdminPin(pin);
+      db.delete(schema.services)
+        .where(eq(schema.services.id, _id))
+        .run();
+      return { success: true };
+    }
+  );
+  safeHandle(
+    IPC.SERVICES_TOGGLE_BOOKMARK,
+    { auth: "session", roles: STAFF_PLUS },
+    (_ctx, id) => {
+      const _id = z.number().int().parse(id);
+      const svc = db
+        .select()
+        .from(schema.services)
+        .where(eq(schema.services.id, _id))
+        .get();
+      if (!svc) throw new Error("Service not found");
+      return db
+        .update(schema.services)
+        .set({ isBookmarked: !svc.isBookmarked })
+        .where(eq(schema.services.id, _id))
+        .returning()
+        .get();
+    }
+  );
+  safeHandle(
+    IPC.SERVICES_GET_BOOKMARKED,
+    { auth: "session", roles: ANY_AUTHED },
+    () =>
+      db
+        .select()
+        .from(schema.services)
+        .where(
+          and(
+            eq(schema.services.isBookmarked, true),
+            eq(schema.services.isActive, true)
+          )
         )
-      )
-      .all()
+        .all()
   );
 
   // Bulk import the services catalogue from CSV. Two modes:
@@ -732,7 +1209,7 @@ function registerIpcHandlers() {
   //                snapshot table written before the changes.
   // Operator-managed flags (is_active, is_bookmarked) are NEVER overwritten
   // on existing rows; they only apply to brand-new inserts.
-  safeHandle(IPC.SERVICES_IMPORT_CSV, (_e, raw) => {
+  safeHandle(IPC.SERVICES_IMPORT_CSV, { auth: "session", roles: ADMIN_ONLY }, (_ctx, raw) => {
     const { csv, mode } = parseArg(
       servicesImportSchema,
       raw,
@@ -807,7 +1284,7 @@ function registerIpcHandlers() {
   // Preview shows the diff without mutating; commit applies inside one
   // transaction with a backup snapshot. Same preservation rules as
   // SERVICES_IMPORT_CSV (operator-state never overwritten; no deletes).
-  safeHandle(IPC.SERVICES_LOAD_SEED_CATALOGUE, (_e, raw) => {
+  safeHandle(IPC.SERVICES_LOAD_SEED_CATALOGUE, { auth: "session", roles: ADMIN_ONLY }, (_ctx, raw) => {
     const { mode } = parseArg(
       z.object({ mode: z.enum(["preview", "commit"]) }),
       raw,
@@ -880,7 +1357,7 @@ function registerIpcHandlers() {
   });
 
   // Bulk patch services. Single transaction; cap enforced by Zod (500).
-  safeHandle(IPC.SERVICES_BULK_UPDATE, (_e, raw) => {
+  safeHandle(IPC.SERVICES_BULK_UPDATE, { auth: "session", roles: ADMIN_ONLY }, (_ctx, raw) => {
     const { ids, patch } = parseArg(
       bulkUpdateServicesSchema,
       raw,
@@ -905,12 +1382,13 @@ function registerIpcHandlers() {
   // Bulk delete services with the existing in-use guard. Rows referenced by
   // any invoiceItems are skipped and returned in `skippedInUse`; the rest
   // delete in a single transaction.
-  safeHandle(IPC.SERVICES_BULK_DELETE, (_e, raw) => {
+  safeHandle(IPC.SERVICES_BULK_DELETE, { auth: "session", roles: ADMIN_ONLY }, (_ctx, raw, pin) => {
     const { ids } = parseArg(
       bulkDeleteServicesSchema,
       raw,
       "services:bulk-delete"
     );
+    requireAdminPin(pin);
     const sqlite = getSqlite();
     const inUseRows = sqlite
       .prepare(
@@ -943,7 +1421,7 @@ function registerIpcHandlers() {
 
   // Service checklist (per-service required documents). Read-only list +
   // bulk replace-all upsert. Used by the Service Edit modal.
-  safeHandle(IPC.SERVICE_CHECKLIST_LIST, (_e, raw) => {
+  safeHandle(IPC.SERVICE_CHECKLIST_LIST, { auth: "session", roles: ANY_AUTHED }, (_ctx, raw) => {
     const { serviceId } = parseArg(
       z.object({ serviceId: z.number().int().positive() }),
       raw,
@@ -957,7 +1435,7 @@ function registerIpcHandlers() {
       .all();
   });
 
-  safeHandle(IPC.SERVICE_CHECKLIST_UPSERT_BULK, (_e, raw) => {
+  safeHandle(IPC.SERVICE_CHECKLIST_UPSERT_BULK, { auth: "session", roles: STAFF_PLUS }, (_ctx, raw) => {
     const { serviceId, items } = parseArg(
       checklistUpsertBulkSchema,
       raw,
@@ -1018,19 +1496,20 @@ function registerIpcHandlers() {
   });
 
   // Invoices — atomic invoice-number generation inside the transaction.
-  safeHandle(IPC.INVOICES_LIST, () =>
+  safeHandle(IPC.INVOICES_LIST, { auth: "session", roles: ANY_AUTHED }, () =>
     db.query.invoices.findMany({
       with: { customer: true, items: true },
       orderBy: [desc(schema.invoices.createdAt)],
     })
   );
-  safeHandle(IPC.INVOICES_GET, (_e, id) =>
+  safeHandle(IPC.INVOICES_GET, { auth: "session", roles: ANY_AUTHED }, (_ctx, id) =>
     db.query.invoices.findFirst({
       where: eq(schema.invoices.id, z.number().int().parse(id)),
       with: { customer: true, items: { with: { service: true } } },
     })
   );
-  safeHandle(IPC.INVOICES_CREATE, (_e, raw) => {
+  safeHandle(IPC.INVOICES_CREATE, { auth: "session", roles: STAFF_PLUS }, (_ctx, raw) => {
+    const sessionUserId = _ctx.session!.userId;
     const data = parseArg(createInvoiceSchema, raw, "invoices:create");
     const sqlite = getSqlite();
 
@@ -1091,6 +1570,8 @@ function registerIpcHandlers() {
           status: data.status ?? "PAID",
           notes: data.notes ?? null,
           customerNotes: data.customerNotes ?? null,
+          createdBy: sessionUserId,
+          updatedBy: sessionUserId,
         })
         .returning()
         .get();
@@ -1118,9 +1599,10 @@ function registerIpcHandlers() {
     })();
   });
 
-  safeHandle(IPC.INVOICES_UPDATE, (_e, id, raw) => {
+  safeHandle(IPC.INVOICES_UPDATE, { auth: "session", roles: STAFF_PLUS }, (ctx, id, raw) => {
     const _id = z.number().int().parse(id);
     const data = parseArg(createInvoiceSchema, raw, "invoices:update");
+    const sessionUserId = ctx.session!.userId;
     if (data.status && data.status !== "PAID" && data.status !== "PENDING") {
       throw new Error(
         "Edit can only save as PAID or PENDING. Use status update for CANCELLED."
@@ -1185,6 +1667,7 @@ function registerIpcHandlers() {
           // Edits invalidate any previously-printed copy: the user must
           // re-print or re-export the PDF to reflect the new content.
           printedAt: null,
+          updatedBy: sessionUserId,
         })
         .where(eq(schema.invoices.id, _id))
         .run();
@@ -1212,30 +1695,48 @@ function registerIpcHandlers() {
     })();
   });
 
-  safeHandle(IPC.INVOICES_UPDATE_STATUS, (_e, id, status) => {
-    const _id = z.number().int().parse(id);
-    const _status = InvoiceStatus.parse(status);
-    return db
-      .update(schema.invoices)
-      .set({ status: _status })
-      .where(eq(schema.invoices.id, _id))
-      .returning()
-      .get();
-  });
-  safeHandle(IPC.INVOICES_DELETE, (_e, id) => {
-    const _id = z.number().int().parse(id);
-    const sqlite = getSqlite();
-    sqlite.transaction(() => {
-      db.delete(schema.invoiceItems)
-        .where(eq(schema.invoiceItems.invoiceId, _id))
-        .run();
-      db.delete(schema.invoices)
+  safeHandle(
+    IPC.INVOICES_UPDATE_STATUS,
+    { auth: "session", roles: STAFF_PLUS },
+    (ctx, id, status, pin) => {
+      const _id = z.number().int().parse(id);
+      const _status = InvoiceStatus.parse(status);
+      // Cancelling an invoice removes it from revenue aggregation, so it is
+      // an admin+PIN action. PAID↔PENDING transitions are routine and stay
+      // available to staff.
+      if (_status === "CANCELLED") {
+        if (ctx.session!.role !== "admin") {
+          throw new Error("Only admins can cancel an invoice.");
+        }
+        requireAdminPin(pin);
+      }
+      return db
+        .update(schema.invoices)
+        .set({ status: _status, updatedBy: ctx.session!.userId })
         .where(eq(schema.invoices.id, _id))
-        .run();
-    })();
-    return { success: true };
-  });
-  safeHandle(IPC.INVOICES_GENERATE_PDF, async (_e, rawId, rawOpts) => {
+        .returning()
+        .get();
+    }
+  );
+  safeHandle(
+    IPC.INVOICES_DELETE,
+    { auth: "session", roles: ADMIN_ONLY },
+    (_ctx, id, pin) => {
+      const _id = z.number().int().parse(id);
+      requireAdminPin(pin);
+      const sqlite = getSqlite();
+      sqlite.transaction(() => {
+        db.delete(schema.invoiceItems)
+          .where(eq(schema.invoiceItems.invoiceId, _id))
+          .run();
+        db.delete(schema.invoices)
+          .where(eq(schema.invoices.id, _id))
+          .run();
+      })();
+      return { success: true };
+    }
+  );
+  safeHandle(IPC.INVOICES_GENERATE_PDF, { auth: "session", roles: STAFF_PLUS }, async (_ctx, rawId, rawOpts) => {
     const id = z.number().int().positive().parse(rawId);
     const opts = z
       .object({ silent: z.boolean().optional() })
@@ -1288,7 +1789,7 @@ function registerIpcHandlers() {
   });
 
   // Reports
-  safeHandle(IPC.REPORTS_DAILY, (_e, dateStr) => {
+  safeHandle(IPC.REPORTS_DAILY, { auth: "session", roles: ANY_AUTHED }, (_ctx, dateStr) => {
     const _date = z.string().parse(dateStr);
     const start = new Date(_date);
     start.setHours(0, 0, 0, 0);
@@ -1302,7 +1803,7 @@ function registerIpcHandlers() {
       with: { customer: true, items: true },
     });
   });
-  safeHandle(IPC.REPORTS_RANGE, (_e, startStr, endStr) => {
+  safeHandle(IPC.REPORTS_RANGE, { auth: "session", roles: ANY_AUTHED }, (_ctx, startStr, endStr) => {
     const s = z.string().parse(startStr);
     const e = z.string().parse(endStr);
     const start = new Date(s);
@@ -1336,7 +1837,7 @@ function registerIpcHandlers() {
     return { startDate, endDate };
   }
 
-  safeHandle(IPC.REPORTS_SUMMARY, (_e, raw) => {
+  safeHandle(IPC.REPORTS_SUMMARY, { auth: "session", roles: ANY_AUTHED }, (_ctx, raw) => {
     const { startDate, endDate } = parseRange(raw);
     const inRange = and(
       gte(schema.invoices.createdAt, startDate),
@@ -1390,7 +1891,7 @@ function registerIpcHandlers() {
     return { totals, byStatus, byPaymentMode };
   });
 
-  safeHandle(IPC.REPORTS_TOP_CUSTOMERS, (_e, raw) => {
+  safeHandle(IPC.REPORTS_TOP_CUSTOMERS, { auth: "session", roles: ANY_AUTHED }, (_ctx, raw) => {
     const { start, end, limit } = parseArg(topNSchema, raw, "reports:top-customers");
     const startDate = new Date(start);
     startDate.setHours(0, 0, 0, 0);
@@ -1426,7 +1927,7 @@ function registerIpcHandlers() {
       .all();
   });
 
-  safeHandle(IPC.REPORTS_TOP_SERVICES, (_e, raw) => {
+  safeHandle(IPC.REPORTS_TOP_SERVICES, { auth: "session", roles: ANY_AUTHED }, (_ctx, raw) => {
     const { start, end, limit } = parseArg(topNSchema, raw, "reports:top-services");
     const startDate = new Date(start);
     startDate.setHours(0, 0, 0, 0);
@@ -1467,7 +1968,7 @@ function registerIpcHandlers() {
       .all();
   });
 
-  safeHandle(IPC.REPORTS_PENDING_DUES, () => {
+  safeHandle(IPC.REPORTS_PENDING_DUES, { auth: "session", roles: ANY_AUTHED }, () => {
     const row = db
       .select({
         count: sql<number>`COUNT(*)`.mapWith(Number),
@@ -1480,7 +1981,7 @@ function registerIpcHandlers() {
   });
 
   // Printer
-  safeHandle(IPC.PRINTER_GET_CONFIG, () => {
+  safeHandle(IPC.PRINTER_GET_CONFIG, { auth: "session", roles: ANY_AUTHED }, () => {
     const p = db.select().from(schema.centerProfiles).where(eq(schema.centerProfiles.id, 1)).get();
     return {
       interface: p?.printerInterface ?? "tcp://192.168.1.100:9100",
@@ -1488,8 +1989,8 @@ function registerIpcHandlers() {
       printUpiQr: p?.printUpiQr ?? false,
     };
   });
-  safeHandle(IPC.PRINTER_LIST, () => scanForPrinters());
-  safeHandle(IPC.PRINTER_TEST, async (_e, rawCfg) => {
+  safeHandle(IPC.PRINTER_LIST, { auth: "session", roles: ANY_AUTHED }, () => scanForPrinters());
+  safeHandle(IPC.PRINTER_TEST, { auth: "session", roles: STAFF_PLUS }, async (_ctx, rawCfg) => {
     let cfg = rawCfg;
     if (!cfg) {
       const p = db.select().from(schema.centerProfiles).where(eq(schema.centerProfiles.id, 1)).get();
@@ -1502,7 +2003,7 @@ function registerIpcHandlers() {
     await printTestPage(cfg as any);
     return { success: true };
   });
-  safeHandle(IPC.PRINTER_PRINT_RECEIPT, async (_e, rawId) => {
+  safeHandle(IPC.PRINTER_PRINT_RECEIPT, { auth: "session", roles: STAFF_PLUS }, async (_ctx, rawId) => {
     const id = z.number().int().positive().parse(rawId);
     const invoice = db.query.invoices
       .findFirst({
@@ -1533,7 +2034,7 @@ function registerIpcHandlers() {
   });
 
   // Backup
-  safeHandle(IPC.BACKUP_EXPORT, async () => {
+  safeHandle(IPC.BACKUP_EXPORT, { auth: "session", roles: ADMIN_ONLY }, async () => {
     const backupDir = path.join(app.getPath("documents"), "CSC-Backups");
     if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
     const stamp = new Date()
@@ -1544,7 +2045,8 @@ function registerIpcHandlers() {
     await getSqlite().backup(out);
     return { success: true, path: out };
   });
-  safeHandle(IPC.BACKUP_IMPORT, async () => {
+  safeHandle(IPC.BACKUP_IMPORT, { auth: "session", roles: ADMIN_ONLY }, async (_ctx, pin) => {
+    requireAdminPin(pin);
     if (!mainWindow) return { error: "No active window" };
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Import Backup",

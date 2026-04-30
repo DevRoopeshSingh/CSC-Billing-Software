@@ -15,6 +15,75 @@ export type LeadStatus = z.infer<typeof LeadStatus>;
 export const MessageChannel = z.enum(["whatsapp", "sms", "both"]);
 export type MessageChannel = z.infer<typeof MessageChannel>;
 
+export const UserRole = z.enum(["admin", "staff", "viewer"]);
+export type UserRole = z.infer<typeof UserRole>;
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+export const userSchema = z.object({
+  id: z.number().int().positive().optional(),
+  username: z.string().min(3),
+  email: z.string().email().or(z.literal("")).nullable().default(null),
+  role: UserRole.default("viewer"),
+  isActive: z.boolean().default(true),
+  createdAt: z.coerce.date().optional(),
+});
+
+export type User = z.infer<typeof userSchema>;
+
+export const loginRequestSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
+export type LoginRequest = z.infer<typeof loginRequestSchema>;
+
+export const setupRequestSchema = z.object({
+  username: z.string().min(3),
+  password: z.string().min(6),
+  adminPin: z.string().min(6),
+});
+export type SetupRequest = z.infer<typeof setupRequestSchema>;
+
+// Strict update payload for USERS_UPDATE: only these fields may be changed by
+// an admin. Username, passwordHash, createdAt, id are intentionally omitted.
+export const userUpdateSchema = z.object({
+  email: z.string().email().or(z.literal("")).nullable().optional(),
+  role: UserRole.optional(),
+  isActive: z.boolean().optional(),
+});
+export type UserUpdateRequest = z.infer<typeof userUpdateSchema>;
+
+export const createUserSchema = z.object({
+  username: z.string().min(3),
+  email: z.string().email().or(z.literal("")).nullable().optional(),
+  role: UserRole,
+  isActive: z.boolean().default(true),
+  password: z.string().min(6),
+});
+export type CreateUserRequest = z.infer<typeof createUserSchema>;
+
+export const setPinSchema = z.object({
+  newPin: z.string().min(6),
+  currentPin: z.string().optional(),
+});
+export type SetPinRequest = z.infer<typeof setPinSchema>;
+
+export const changePasswordSchema = z.object({
+  userId: z.number().int().positive(),
+  newPassword: z.string().min(6),
+  oldPassword: z.string().optional(),
+});
+export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;
+
+// Password reset using the global admin PIN as the authorization factor.
+// No session required (the user is by definition locked out). Rate-limited
+// in the handler.
+export const resetPasswordByPinSchema = z.object({
+  username: z.string().min(1),
+  adminPin: z.string().min(4),
+  newPassword: z.string().min(6),
+});
+export type ResetPasswordByPinRequest = z.infer<typeof resetPasswordByPinSchema>;
+
 // ─── Center Profile ──────────────────────────────────────────────────────────
 export const centerProfileSchema = z.object({
   id: z.number().int().positive().optional(),
@@ -42,6 +111,15 @@ export const centerProfileSchema = z.object({
 
 export type CenterProfile = z.infer<typeof centerProfileSchema>;
 
+// Locked-down payload accepted by CENTER_UPDATE. `pinHash`, `invoiceNumber`,
+// and `id` are deliberately removed: a renderer must not be able to wipe the
+// admin PIN, reset the invoice counter, or change the row id via this
+// endpoint. PIN changes go through AUTH_SET_PIN instead.
+export const centerProfileUpdateSchema = centerProfileSchema
+  .omit({ id: true, pinHash: true, invoiceNumber: true })
+  .partial();
+export type CenterProfileUpdate = z.infer<typeof centerProfileUpdateSchema>;
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 export const ServiceCategoryEnum = z.enum(
   SERVICE_CATEGORIES as unknown as [string, ...string[]]
@@ -60,6 +138,8 @@ export const serviceSchema = z.object({
   isActive: z.boolean().default(true),
   isBookmarked: z.boolean().default(false),
   keywords: z.string().default(""),
+  createdBy: z.number().int().positive().nullable().optional(),
+  updatedBy: z.number().int().positive().nullable().optional(),
 });
 
 export type Service = z.infer<typeof serviceSchema>;
@@ -104,6 +184,8 @@ export const customerSchema = z.object({
   email: z.string().email().or(z.literal("")).default(""),
   address: z.string().default(""),
   tags: z.string().default(""),
+  createdBy: z.number().int().positive().nullable().optional(),
+  updatedBy: z.number().int().positive().nullable().optional(),
 });
 
 export type Customer = z.infer<typeof customerSchema> & {
@@ -141,6 +223,8 @@ export const invoiceSchema = z.object({
   customerNotes: z.string().nullable().default(null),
   printedAt: z.coerce.date().nullable().default(null),
   items: z.array(invoiceItemSchema).optional(),
+  createdBy: z.number().int().positive().nullable().optional(),
+  updatedBy: z.number().int().positive().nullable().optional(),
 });
 
 export type Invoice = z.infer<typeof invoiceSchema>;
@@ -189,6 +273,8 @@ export const faqEntrySchema = z.object({
   sortOrder: z.number().int().nonnegative().default(0),
   createdAt: z.coerce.date().optional(),
   updatedAt: z.coerce.date().optional(),
+  createdBy: z.number().int().positive().nullable().optional(),
+  updatedBy: z.number().int().positive().nullable().optional(),
 });
 
 export type FaqEntry = z.infer<typeof faqEntrySchema>;
@@ -268,6 +354,8 @@ export const leadSchema = z.object({
   notes: z.string().nullable().default(null),
   createdAt: z.coerce.date().optional(),
   convertedCustomerId: z.number().int().positive().nullable().default(null),
+  createdBy: z.number().int().positive().nullable().optional(),
+  updatedBy: z.number().int().positive().nullable().optional(),
 });
 
 export type Lead = z.infer<typeof leadSchema>;

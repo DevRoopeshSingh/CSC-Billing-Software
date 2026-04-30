@@ -50,10 +50,16 @@ const NAV_SECTIONS = [
   },
 ];
 
+import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { LoginScreen } from "@/components/auth/LoginScreen";
+import { SetupScreen } from "@/components/auth/SetupScreen";
+import { LogOut } from "lucide-react";
+
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 function SidebarNav() {
   const pathname = usePathname();
   const [isOnline, setIsOnline] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -66,6 +72,36 @@ function SidebarNav() {
       window.removeEventListener("offline", off);
     };
   }, []);
+
+  type NavItem = {
+    href: string;
+    label: string;
+    icon: typeof LayoutDashboard;
+    roles?: readonly string[];
+  };
+  const navSections: { label: string; items: NavItem[] }[] = [
+    {
+      label: "Main",
+      items: [
+        { href: "/", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/billing/new", label: "New Invoice", icon: FilePlus },
+        { href: "/invoices", label: "Invoices", icon: FileText },
+        { href: "/customers", label: "Customers", icon: Users },
+        { href: "/services", label: "Services", icon: Briefcase },
+      ],
+    },
+    {
+      label: "Insights",
+      items: [{ href: "/reports", label: "Reports", icon: BarChart3 }],
+    },
+    {
+      label: "System",
+      items: [
+        { href: "/settings/backup", label: "Backup", icon: HardDrive, roles: ["admin"] },
+        { href: "/settings", label: "Settings", icon: Settings, roles: ["admin", "staff"] },
+      ],
+    },
+  ];
 
   return (
     <aside
@@ -87,35 +123,42 @@ function SidebarNav() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3">
-        {NAV_SECTIONS.map((section) => (
-          <div key={section.label} className="mb-1">
-            <p className="px-5 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-wider text-white/30">
-              {section.label}
-            </p>
-            {section.items.map((item) => {
-              const active =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "mx-2 mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors",
-                    active
-                      ? "bg-primary text-white"
-                      : "text-white/70 hover:bg-white/5 hover:text-white"
-                  )}
-                >
-                  <Icon className="h-[18px] w-[18px] shrink-0" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+        {navSections.map((section) => {
+          const visibleItems = section.items.filter(
+            (item) => !item.roles || (user && item.roles.includes(user.role))
+          );
+          if (visibleItems.length === 0) return null;
+
+          return (
+            <div key={section.label} className="mb-1">
+              <p className="px-5 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-wider text-white/30">
+                {section.label}
+              </p>
+              {visibleItems.map((item) => {
+                const active =
+                  item.href === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(item.href);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "mx-2 mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors",
+                      active
+                        ? "bg-primary text-white"
+                        : "text-white/70 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    <Icon className="h-[18px] w-[18px] shrink-0" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
 
       {/* Status Footer */}
@@ -143,6 +186,7 @@ function SidebarNav() {
 function TopBar() {
   const pathname = usePathname();
   const [dateStr, setDateStr] = useState("");
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     setDateStr(format(new Date(), "EEEE, MMM d, yyyy"));
@@ -156,6 +200,7 @@ function TopBar() {
     if (pathname.startsWith("/services")) return "Services";
     if (pathname.startsWith("/reports")) return "Reports";
     if (pathname.startsWith("/settings/backup")) return "Backup";
+    if (pathname.startsWith("/settings/users")) return "Users & Roles";
     if (pathname.startsWith("/settings")) return "Settings";
     return "CSC Billing";
   })();
@@ -199,38 +244,81 @@ function TopBar() {
         </button>
 
         {/* New Invoice CTA */}
-        <Link
-          href="/billing/new"
-          className={cn(
-            "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
-            "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
-          )}
-        >
-          <Plus className="h-4 w-4" />
-          New Invoice
-        </Link>
+        {user?.role !== "viewer" && (
+          <Link
+            href="/billing/new"
+            className={cn(
+              "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
+              "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
+            )}
+          >
+            <Plus className="h-4 w-4" />
+            New Invoice
+          </Link>
+        )}
 
-        {/* Avatar */}
+        {/* Avatar & User */}
         <div className="ml-1 flex items-center gap-2.5 border-l border-border pl-4">
           <div
             className={cn(
               "flex h-8 w-8 items-center justify-center rounded-full bg-primary",
-              "text-sm font-semibold text-white"
+              "text-sm font-semibold text-white uppercase"
             )}
           >
-            A
+            {user?.username.charAt(0)}
           </div>
           <div className="flex flex-col">
             <span className="text-[13px] font-semibold text-foreground">
-              Admin
+              {user?.username}
             </span>
-            <span className="text-[11px] text-muted-foreground">
-              CSC Center
+            <span className="text-[11px] text-muted-foreground uppercase">
+              {user?.role}
             </span>
           </div>
+          
+          {/* Logout */}
+          <button 
+            onClick={logout}
+            className="ml-2 text-muted-foreground hover:text-foreground transition-colors"
+            title="Log out"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </header>
+  );
+}
+
+function AppLayout({ children }: { children: React.ReactNode }) {
+  const { user, isFirstRun, loading } = useAuth();
+
+  if (loading) {
+    return <div className="flex h-screen items-center justify-center bg-background">Loading...</div>;
+  }
+
+  if (isFirstRun) {
+    return <SetupScreen />;
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      <SidebarNav />
+      <div
+        className="flex flex-1 flex-col"
+        style={{ marginLeft: "var(--sidebar-w)" }}
+      >
+        <TopBar />
+        <BridgeStatusBanner />
+        <main className="flex-1 overflow-y-auto bg-background p-7">
+          <div className="mx-auto max-w-7xl">{children}</div>
+        </main>
+      </div>
+    </div>
   );
 }
 
@@ -251,19 +339,9 @@ export default function RootLayout({
       </head>
       <body>
         <ToastProvider>
-          <div className="flex h-screen overflow-hidden bg-background">
-            <SidebarNav />
-            <div
-              className="flex flex-1 flex-col"
-              style={{ marginLeft: "var(--sidebar-w)" }}
-            >
-              <TopBar />
-              <BridgeStatusBanner />
-              <main className="flex-1 overflow-y-auto bg-background p-7">
-                <div className="mx-auto max-w-7xl">{children}</div>
-              </main>
-            </div>
-          </div>
+          <AuthProvider>
+            <AppLayout>{children}</AppLayout>
+          </AuthProvider>
         </ToastProvider>
       </body>
     </html>

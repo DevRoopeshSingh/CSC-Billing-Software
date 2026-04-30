@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
+import { PinPromptModal } from "@/components/auth/PinPromptModal";
 
 export default function BackupPage() {
   const { toast } = useToast();
@@ -26,6 +27,7 @@ export default function BackupPage() {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [lastExportPath, setLastExportPath] = useState<string | null>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
 
   // ── Load last backup timestamp from center profile ────────────────────────
   const loadLastBackup = useCallback(async () => {
@@ -77,42 +79,42 @@ export default function BackupPage() {
   };
 
   // ── Import / Restore Backup ──────────────────────────────────────────────
-  const handleImport = async () => {
+  const handleImport = () => {
     const confirmed = window.confirm(
       "⚠️ Importing a backup will REPLACE all current data.\n\n" +
         "This cannot be undone. Make sure you have exported a recent backup first.\n\n" +
         "Continue with restore?"
     );
     if (!confirmed) return;
+    setShowPinModal(true);
+  };
 
+  const confirmImport = async (pin: string) => {
     setImporting(true);
     try {
       const result = await ipc<{
         success: boolean;
         cancelled?: boolean;
         path?: string;
-      }>(IPC.BACKUP_IMPORT);
+      }>(IPC.BACKUP_IMPORT, pin);
 
       if (result?.cancelled) {
-        // User dismissed the file picker — no action needed
+        setShowPinModal(false);
         return;
       }
 
       if (result?.success) {
+        setShowPinModal(false);
         toast(
           "Restore complete! Reloading the app to apply changes…",
           "success"
         );
-        // Give the toast a moment to display before the reload wipes the page
         setTimeout(() => {
           window.location.reload();
         }, 1500);
       }
     } catch (err) {
-      toast(
-        err instanceof IpcError ? err.message : "Backup import failed",
-        "error"
-      );
+      throw err instanceof IpcError ? err : new Error("Backup import failed");
     } finally {
       setImporting(false);
     }
@@ -302,6 +304,16 @@ export default function BackupPage() {
           </div>
         </div>
       </div>
+
+      {showPinModal && (
+        <PinPromptModal
+          onConfirm={confirmImport}
+          onCancel={() => setShowPinModal(false)}
+          title="Restore Backup"
+          description="Restoring REPLACES all current data. Enter Admin PIN to continue."
+          confirmLabel="Restore"
+        />
+      )}
     </div>
   );
 }

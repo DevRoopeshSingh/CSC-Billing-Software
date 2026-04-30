@@ -12,6 +12,7 @@ interface Props {
   align?: "left" | "right";
   ariaLabel?: string;
   onCommit: (next: number) => Promise<void> | void;
+  readOnly?: boolean;
 }
 
 export function InlineNumberCell({
@@ -23,6 +24,7 @@ export function InlineNumberCell({
   align = "right",
   ariaLabel,
   onCommit,
+  readOnly = false,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(String(value));
@@ -65,10 +67,12 @@ export function InlineNumberCell({
     return (
       <button
         type="button"
-        onClick={() => setEditing(true)}
+        onClick={() => !readOnly && setEditing(true)}
+        disabled={readOnly}
         aria-label={ariaLabel}
         className={cn(
-          "w-full rounded px-1 py-0.5 text-sm hover:bg-background",
+          "w-full rounded px-1 py-0.5 text-sm",
+          !readOnly && "hover:bg-background",
           align === "right" ? "text-right" : "text-left"
         )}
       >

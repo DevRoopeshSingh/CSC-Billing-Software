@@ -11,6 +11,20 @@ export const IPC = {
   CENTER_GET: "center:get",
   CENTER_UPDATE: "center:update",
 
+  // ── Auth & Users ─────────────────────────────────────────────────────────
+  USERS_CHECK_FIRST_RUN: "users:check-first-run",
+  USERS_SETUP_ADMIN: "users:setup-admin",
+  USERS_LOGIN: "users:login",
+  USERS_LOGOUT: "users:logout",
+  USERS_RESUME_SESSION: "users:resume-session",
+  USERS_LIST: "users:list",
+  USERS_CREATE: "users:create",
+  USERS_UPDATE: "users:update",
+  USERS_DELETE: "users:delete",
+  USERS_CHANGE_PASSWORD: "users:change-password",
+  USERS_RESET_PASSWORD_BY_PIN: "users:reset-password-by-pin",
+  AUTH_SET_PIN: "auth:set-pin",
+
   // ── Customers ────────────────────────────────────────────────────────────
   CUSTOMERS_LIST: "customers:list",
   CUSTOMERS_GET: "customers:get",

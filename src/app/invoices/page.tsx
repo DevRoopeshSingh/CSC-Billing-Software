@@ -25,6 +25,7 @@ import {
   ChevronDown,
   Download,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 
 const STATUS_OPTIONS = ["ALL", "PAID", "PENDING", "CANCELLED"] as const;
 
@@ -32,6 +33,7 @@ function InvoicesContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user } = useAuth();
   
   const customerIdFilter = searchParams.get("customerId");
 
@@ -66,6 +68,12 @@ function InvoicesContent() {
     id: number,
     newStatus: "PAID" | "PENDING" | "CANCELLED"
   ) => {
+    if (newStatus === "CANCELLED") {
+      // Cancellation needs admin+PIN; route through the detail page so the
+      // PIN modal flow stays in one place.
+      router.push(`/invoices/${id}`);
+      return;
+    }
     try {
       await ipc(IPC.INVOICES_UPDATE_STATUS, id, newStatus);
       setInvoices((list) =>
@@ -164,16 +172,18 @@ function InvoicesContent() {
             <Download className="h-4 w-4" />
             Export CSV
           </button>
-          <Link
-            href="/billing/new"
-            className={cn(
-              "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
-              "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
-            )}
-          >
-            <FilePlus className="h-4 w-4" />
-            New Invoice
-          </Link>
+          {user?.role !== "viewer" && (
+            <Link
+              href="/billing/new"
+              className={cn(
+                "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
+                "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
+              )}
+            >
+              <FilePlus className="h-4 w-4" />
+              New Invoice
+            </Link>
+          )}
         </div>
       </div>
 
@@ -356,6 +366,7 @@ function InvoicesContent() {
                       <div className="relative inline-block">
                         <select
                           value={inv.status}
+                          disabled={user?.role === "viewer"}
                           onChange={(e) =>
                             updateStatus(
                               inv.id!,

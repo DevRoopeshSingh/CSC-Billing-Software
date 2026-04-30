@@ -1,6 +1,23 @@
-// src/db/schema.ts
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  username: text("username").notNull().unique(),
+  email: text("email"),
+  passwordHash: text("password_hash").notNull(),
+  role: text("role").notNull().default("viewer"), // admin, staff, viewer
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const usersRelations = relations(users, ({ many }) => ({
+  invoicesCreated: many(invoices, { relationName: "invoiceCreatedBy" }),
+  invoicesUpdated: many(invoices, { relationName: "invoiceUpdatedBy" }),
+}));
 
 // ─── Center Profile ──────────────────────────────────────────────────────────
 export const centerProfiles = sqliteTable("center_profiles", {
@@ -43,6 +60,8 @@ export const services = sqliteTable("services", {
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   isBookmarked: integer("is_bookmarked", { mode: "boolean" }).notNull().default(false),
   keywords: text("keywords").notNull().default(""),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
 });
 
 export const servicesRelations = relations(services, ({ many }) => ({
@@ -59,6 +78,8 @@ export const customers = sqliteTable("customers", {
   email: text("email").notNull().default(""),
   address: text("address").notNull().default(""),
   tags: text("tags").notNull().default(""),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
 });
 
 export const customersRelations = relations(customers, ({ many }) => ({
@@ -84,6 +105,8 @@ export const invoices = sqliteTable("invoices", {
   notes: text("notes"),
   customerNotes: text("customer_notes"),
   printedAt: integer("printed_at", { mode: "timestamp" }),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
 });
 
 export const invoicesRelations = relations(invoices, ({ one, many }) => ({
@@ -92,6 +115,16 @@ export const invoicesRelations = relations(invoices, ({ one, many }) => ({
     references: [customers.id],
   }),
   items: many(invoiceItems),
+  creator: one(users, {
+    fields: [invoices.createdBy],
+    references: [users.id],
+    relationName: "invoiceCreatedBy",
+  }),
+  updater: one(users, {
+    fields: [invoices.updatedBy],
+    references: [users.id],
+    relationName: "invoiceUpdatedBy",
+  }),
 }));
 
 // ─── Invoice Item ────────────────────────────────────────────────────────────
@@ -138,6 +171,8 @@ export const faqEntries = sqliteTable("faq_entries", {
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
 });
 
 // ─── Service Document Checklists ─────────────────────────────────────────────
@@ -178,6 +213,8 @@ export const leads = sqliteTable("leads", {
     .notNull()
     .$defaultFn(() => new Date()),
   convertedCustomerId: integer("converted_customer_id"),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
 });
 
 // ─── Message Templates ──────────────────────────────────────────────────────

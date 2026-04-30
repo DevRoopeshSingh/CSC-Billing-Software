@@ -69,7 +69,9 @@ export default function BookmarkedServices({
     }
     window.ipc
       .invoke(IPC.SERVICES_GET_BOOKMARKED)
-      .then((data) => setServices((data as BookmarkedService[]) ?? []))
+      .then((data) =>
+        setServices(Array.isArray(data) ? (data as BookmarkedService[]) : [])
+      )
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

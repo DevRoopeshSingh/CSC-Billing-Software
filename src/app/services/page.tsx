@@ -30,9 +30,12 @@ import {
   Upload,
 } from "lucide-react";
 import type { ServicesImportResult } from "@/shared/types";
+import { useAuth } from "@/lib/auth-context";
+import { PinPromptModal } from "@/components/auth/PinPromptModal";
 
 export default function ServicesPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -44,6 +47,11 @@ export default function ServicesPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [globalTaxRate, setGlobalTaxRate] = useState(0);
   const [seedBusy, setSeedBusy] = useState(false);
+  const [pinModal, setPinModal] = useState<
+    | null
+    | { kind: "delete-one"; id: number }
+    | { kind: "delete-bulk"; ids: number[] }
+  >(null);
 
   const loadServices = useCallback(async () => {
     try {
@@ -173,15 +181,19 @@ export default function ServicesPage() {
     [services, toast]
   );
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = (id: number) => {
     if (
       !confirm(
         "Delete this service? It cannot be deleted if used in invoices."
       )
     )
       return;
+    setPinModal({ kind: "delete-one", id });
+  };
+
+  const confirmDeleteOne = async (pin: string, id: number) => {
     try {
-      await ipc(IPC.SERVICES_DELETE, id);
+      await ipc(IPC.SERVICES_DELETE, id, pin);
       setSelection((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -189,13 +201,11 @@ export default function ServicesPage() {
       });
       loadServices();
       toast("Service deleted", "success");
+      setPinModal(null);
     } catch (err) {
-      toast(
-        err instanceof IpcError
-          ? err.message
-          : "Cannot delete — service is used in invoices",
-        "error"
-      );
+      throw err instanceof IpcError
+        ? err
+        : new Error("Cannot delete — service is used in invoices");
     }
   };
 
@@ -249,7 +259,7 @@ export default function ServicesPage() {
     }
   };
 
-  const bulkDelete = async () => {
+  const bulkDelete = () => {
     const ids = Array.from(selection);
     if (ids.length === 0) return;
     if (
@@ -258,11 +268,16 @@ export default function ServicesPage() {
       )
     )
       return;
+    setPinModal({ kind: "delete-bulk", ids });
+  };
+
+  const confirmBulkDelete = async (pin: string, ids: number[]) => {
     setBulkBusy(true);
     try {
       const r = await ipc<BulkDeleteServicesResult>(
         IPC.SERVICES_BULK_DELETE,
-        { ids }
+        { ids },
+        pin
       );
       // Remove only deleted ids from selection; leave skipped rows visible
       // and selected for clarity (guardrail #3).
@@ -282,11 +297,9 @@ export default function ServicesPage() {
         toast(`${r.deleted} deleted`, "success");
       }
       await loadServices();
+      setPinModal(null);
     } catch (err) {
-      toast(
-        err instanceof IpcError ? err.message : "Bulk delete failed",
-        "error"
-      );
+      throw err instanceof IpcError ? err : new Error("Bulk delete failed");
     } finally {
       setBulkBusy(false);
     }
@@ -362,24 +375,28 @@ export default function ServicesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={loadSeedCatalogue}
-            disabled={seedBusy}
-            title="Re-import the bundled CSC seed catalogue"
-            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[13px] font-semibold hover:bg-background disabled:opacity-50"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            {seedBusy ? "Loading..." : "Load Seed"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setImportOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[13px] font-semibold hover:bg-background"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            Import CSV
-          </button>
+          {user?.role !== "viewer" && (
+            <>
+              <button
+                type="button"
+                onClick={loadSeedCatalogue}
+                disabled={seedBusy}
+                title="Re-import the bundled CSC seed catalogue"
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[13px] font-semibold hover:bg-background disabled:opacity-50"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {seedBusy ? "Loading..." : "Load Seed"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[13px] font-semibold hover:bg-background"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Import CSV
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={exportCsv}
@@ -388,20 +405,22 @@ export default function ServicesPage() {
             <Download className="h-3.5 w-3.5" />
             Export CSV
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setEditing(null);
-              setEditorOpen(true);
-            }}
-            className={cn(
-              "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
-              "text-[13px] font-semibold text-white hover:bg-primary-dark"
-            )}
-          >
-            <Plus className="h-4 w-4" />
-            Add Service
-          </button>
+          {user?.role !== "viewer" && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setEditorOpen(true);
+              }}
+              className={cn(
+                "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
+                "text-[13px] font-semibold text-white hover:bg-primary-dark"
+              )}
+            >
+              <Plus className="h-4 w-4" />
+              Add Service
+            </button>
+          )}
         </div>
       </div>
 
@@ -435,14 +454,16 @@ export default function ServicesPage() {
             </span>
           </div>
 
-          <BulkActionsBar
-            selectedCount={selection.size}
-            busy={bulkBusy}
-            onActivate={() => bulkPatch({ isActive: true })}
-            onDeactivate={() => bulkPatch({ isActive: false })}
-            onDelete={bulkDelete}
-            onClear={() => setSelection(new Set())}
-          />
+          {user?.role !== "viewer" && (
+            <BulkActionsBar
+              selectedCount={selection.size}
+              busy={bulkBusy}
+              onActivate={() => bulkPatch({ isActive: true })}
+              onDeactivate={() => bulkPatch({ isActive: false })}
+              onDelete={bulkDelete}
+              onClear={() => setSelection(new Set())}
+            />
+          )}
 
           {loading ? (
             <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -518,6 +539,7 @@ export default function ServicesPage() {
                 setEditorOpen(true);
               }}
               onDelete={handleDelete}
+              readOnly={user?.role === "viewer"}
             />
           )}
         </div>
@@ -538,6 +560,25 @@ export default function ServicesPage() {
           loadServices();
         }}
       />
+
+      {pinModal?.kind === "delete-one" && (
+        <PinPromptModal
+          onConfirm={(pin) => confirmDeleteOne(pin, pinModal.id)}
+          onCancel={() => setPinModal(null)}
+          title="Delete Service"
+          description="Enter Admin PIN to permanently delete this service."
+          confirmLabel="Delete"
+        />
+      )}
+      {pinModal?.kind === "delete-bulk" && (
+        <PinPromptModal
+          onConfirm={(pin) => confirmBulkDelete(pin, pinModal.ids)}
+          onCancel={() => setPinModal(null)}
+          title="Delete Services"
+          description={`Enter Admin PIN to delete ${pinModal.ids.length} service${pinModal.ids.length === 1 ? "" : "s"}. Services already used in invoices will be skipped.`}
+          confirmLabel="Delete"
+        />
+      )}
 
       {/* Suppress unused-import warnings while keeping references stable. */}
       <noscript className="hidden">{SERVICE_CATEGORIES.length}</noscript>
