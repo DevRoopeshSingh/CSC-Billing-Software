@@ -28,6 +28,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  BookOpen,
 } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/lib/auth-context";
@@ -76,6 +77,10 @@ function SidebarNav() {
     {
       label: "Insights",
       items: [{ href: "/reports", label: "Reports", icon: BarChart3 }],
+    },
+    {
+      label: "Help",
+      items: [{ href: "/help", label: "Service FAQ", icon: BookOpen }],
     },
     {
       label: "System",
@@ -253,6 +258,7 @@ function TopBar() {
     if (pathname.startsWith("/customers")) return "Customers";
     if (pathname.startsWith("/services")) return "Services";
     if (pathname.startsWith("/reports")) return "Reports";
+    if (pathname.startsWith("/help")) return "Service FAQ";
     if (pathname.startsWith("/settings/backup")) return "Backup";
     if (pathname.startsWith("/settings/users")) return "Users & Roles";
     if (pathname.startsWith("/settings")) return "Settings";
