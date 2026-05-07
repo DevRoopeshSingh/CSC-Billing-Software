@@ -10,6 +10,7 @@ import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { useToast } from "@/components/Toast";
 import type {
+  CenterProfile,
   InvoiceDetail,
   InvoiceItem,
   InvoiceStatus,
@@ -30,6 +31,7 @@ import {
   Loader2,
   Pencil,
   FileText,
+  Building2,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { PinPromptModal } from "@/components/auth/PinPromptModal";
@@ -52,6 +54,8 @@ export default function InvoiceDetailPage() {
   }, [params]);
 
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
+  const [center, setCenter] = useState<CenterProfile | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [showPinModal, setShowPinModal] = useState<
@@ -69,15 +73,21 @@ export default function InvoiceDetailPage() {
     }
     setLoading(true);
     try {
-      const data = await ipc<InvoiceDetail | undefined>(
-        IPC.INVOICES_GET,
-        invoiceId
-      );
+      const [data, profile, logoRes] = await Promise.all([
+        ipc<InvoiceDetail | undefined>(IPC.INVOICES_GET, invoiceId),
+        ipc<CenterProfile | undefined>(IPC.CENTER_GET).catch(() => undefined),
+        ipc<{ dataUrl: string | null }>(
+          IPC.CENTER_GET_BRANDING_ASSET,
+          "logo"
+        ).catch(() => ({ dataUrl: null })),
+      ]);
       if (!data) {
         setNotFound(true);
       } else {
         setInvoice(data);
       }
+      setCenter(profile ?? null);
+      setLogoUrl(logoRes?.dataUrl ?? null);
     } catch (err) {
       toast(
         err instanceof IpcError ? err.message : "Failed to load invoice",
@@ -236,41 +246,49 @@ export default function InvoiceDetailPage() {
   const { customer } = invoice;
   const items = (invoice.items ?? []) as LineItemWithService[];
 
+  // Shared button class so every action chip has the same height/padding.
+  const actionBtn = cn(
+    "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3",
+    "text-[13px] font-medium transition-colors disabled:opacity-60"
+  );
+
+  const isViewer = user?.role === "viewer";
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/invoices"
-            className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card",
-              "text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-            )}
-            title="Back to invoices"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div>
-            <h2 className="text-2xl font-bold text-foreground">
-              {invoice.invoiceNo}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Created{" "}
-              {invoice.createdAt ? formatDate(invoice.createdAt) : "—"} ·{" "}
-              {invoice.paymentMode}
-            </p>
-          </div>
+      {/* ── Top toolbar (back / title block / status / actions) ──────── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href="/invoices"
+          className={cn(
+            actionBtn,
+            "border-border bg-card text-muted-foreground hover:bg-background hover:text-foreground"
+          )}
+          title="Back to invoices"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden sm:inline">Back</span>
+        </Link>
+
+        <div className="mr-auto min-w-0">
+          <h2 className="truncate text-2xl font-bold text-foreground">
+            {invoice.invoiceNo}
+          </h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Created{" "}
+            {invoice.createdAt ? formatDate(invoice.createdAt) : "—"} ·{" "}
+            {invoice.paymentMode}
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <select
               value={invoice.status}
-              disabled={busy === "status" || user?.role === "viewer"}
+              disabled={busy === "status" || isViewer}
               onChange={(e) => onStatusChange(e.target.value as InvoiceStatus)}
               className={cn(
-                "appearance-none rounded-full border px-4 py-1.5 pr-8 text-xs font-semibold",
+                "h-9 appearance-none rounded-lg border px-3 pr-8 text-xs font-semibold",
                 "focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60",
                 STATUS_CLASSES[invoice.status]
               )}
@@ -282,12 +300,12 @@ export default function InvoiceDetailPage() {
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2" />
           </div>
 
-          {invoice.status === "PENDING" && user?.role !== "viewer" && (
+          {invoice.status === "PENDING" && !isViewer && (
             <Link
               href={`/invoices/${invoice.id}/edit`}
               className={cn(
-                "flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2",
-                "text-[13px] font-medium text-primary transition-colors hover:bg-primary/20"
+                actionBtn,
+                "border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
               )}
             >
               <Pencil className="h-4 w-4" />
@@ -300,9 +318,8 @@ export default function InvoiceDetailPage() {
             onClick={onDownloadPdf}
             disabled={busy !== null}
             className={cn(
-              "flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2",
-              "text-[13px] font-medium text-foreground transition-colors hover:bg-background",
-              "disabled:opacity-60"
+              actionBtn,
+              "border-border bg-card text-foreground hover:bg-background"
             )}
           >
             {busy === "pdf" ? (
@@ -318,9 +335,8 @@ export default function InvoiceDetailPage() {
             onClick={onPrint}
             disabled={busy !== null}
             className={cn(
-              "flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2",
-              "text-[13px] font-medium text-foreground transition-colors hover:bg-background",
-              "disabled:opacity-60"
+              actionBtn,
+              "border-border bg-card text-foreground hover:bg-background"
             )}
           >
             {busy === "print" ? (
@@ -331,15 +347,14 @@ export default function InvoiceDetailPage() {
             Print
           </button>
 
-          {user?.role !== "viewer" && (
+          {!isViewer && (
             <button
               type="button"
               onClick={onDelete}
               disabled={busy !== null}
               className={cn(
-                "flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2",
-                "text-[13px] font-medium text-red-700 transition-colors hover:bg-red-100",
-                "disabled:opacity-60"
+                actionBtn,
+                "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
               )}
             >
               {busy === "delete" ? (
@@ -347,9 +362,34 @@ export default function InvoiceDetailPage() {
               ) : (
                 <Trash2 className="h-4 w-4" />
               )}
-              Delete
+              <span className="hidden sm:inline">Delete</span>
             </button>
           )}
+        </div>
+      </div>
+
+      {/* ── Branding strip (logo + center identity) ──────────────────── */}
+      <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={center?.centerName ?? "Logo"}
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <Building2 className="h-6 w-6 text-muted-foreground/60" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-base font-semibold text-foreground">
+            {center?.centerName || "CSC Center"}
+          </p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {[center?.address, center?.mobile, center?.email]
+              .filter(Boolean)
+              .join("  ·  ") || "Set your center details in Settings."}
+          </p>
         </div>
       </div>
 

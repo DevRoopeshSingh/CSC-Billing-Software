@@ -1,20 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { User, UserRole } from "@/shared/types";
 import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { useToast } from "@/components/Toast";
-import { Plus, Shield, User as UserIcon, Trash2, Key, Loader2, Edit2 } from "lucide-react";
+import { Plus, Shield, User as UserIcon, Trash2, Key, Loader2, Edit2, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function UsersSettingsPage() {
   const { user: currentUser } = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState<number | null>(null);
@@ -22,6 +24,13 @@ export default function UsersSettingsPage() {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role !== "admin") {
+      router.replace("/");
+    }
+  }, [currentUser, router]);
 
   const loadUsers = async () => {
     try {
@@ -50,8 +59,9 @@ export default function UsersSettingsPage() {
 
   if (currentUser?.role !== "admin") {
     return (
-      <div className="flex h-[50vh] items-center justify-center text-muted-foreground">
-        You do not have permission to access user settings.
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Lock className="h-8 w-8" />
+        <p className="text-sm">User &amp; role management is admin-only.</p>
       </div>
     );
   }

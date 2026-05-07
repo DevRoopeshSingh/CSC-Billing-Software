@@ -2,9 +2,31 @@
 // Renders an invoice into a single-page A4 PDF with pdf-lib.
 // No external fonts required — uses Helvetica (WinAnsi). The rupee symbol is
 // not in WinAnsi, so amounts are prefixed with "Rs." instead of "₹".
+//
+// Layout policy:
+//   ┌─────────────────────────────────────────────────────────────────┐
+//   │ [logo] Center Name           INVOICE                            │
+//   │        address / mobile      Invoice # / Date / Status / ...    │
+//   │ ────────────────────────────────────────────────────────────    │
+//   │ BILL TO                                                         │
+//   │ customer name + contact                                         │
+//   │                                                                 │
+//   │ ┌─ items table ────────────────────────────────────────────┐    │
+//   │ │ description | qty | rate | tax% | amount                  │    │
+//   │ └───────────────────────────────────────────────────────────┘    │
+//   │                                                Totals block      │
+//   │                                                                  │
+//   │ NOTES (optional)                                                 │
+//   │ ────────────────────────────────────────────────────────────     │
+//   │ Pay via UPI: id      [QR]                       Generated date   │
+//   └──────────────────────────────────────────────────────────────────┘
+//
+// All vertical advance is computed from a single `y` cursor; reserved
+// floors prevent items, totals, notes, and footer from ever overlapping.
 
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, PDFFont, PDFImage, rgb } from "pdf-lib";
 import fs from "fs";
+import path from "path";
 
 type Customer = {
   name?: string | null;
@@ -47,11 +69,14 @@ type CenterProfile = {
   udyamNumber?: string | null;
   upiId?: string | null;
   invoicePrefix?: string | null;
-  logoPath?: string | null;
+  // Resolved absolute paths (or null) — main process resolves these inside
+  // its uploadsPath sandbox before calling us, so we never touch the DB
+  // strings directly.
+  logoFile?: string | null;
+  upiQrFile?: string | null;
 } | null;
 
-// Sanitize strings for WinAnsi encoding — replace rupee and common unicode
-// glyphs with ASCII fallbacks so pdf-lib's Helvetica can render them.
+// Single-line sanitizer: strips newlines and any non-WinAnsi glyphs.
 function sanitize(input: string | null | undefined): string {
   if (!input) return "";
   return input
@@ -60,7 +85,20 @@ function sanitize(input: string | null | undefined): string {
     .replace(/[“”]/g, '"')
     .replace(/–|—/g, "-")
     .replace(/•/g, "*")
-    .replace(/[^\x20-\x7E\n]/g, "");
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n+/g, " ")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function sanitizeMultiline(input: string | null | undefined): string[] {
+  if (!input) return [];
+  return input
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((ln) => sanitize(ln))
+    .filter((ln) => ln.length > 0);
 }
 
 function money(n: number): string {
@@ -78,6 +116,91 @@ function formatDateShort(date: Date | string | null | undefined): string {
   });
 }
 
+function clipToWidth(
+  text: string,
+  font: PDFFont,
+  size: number,
+  maxW: number
+): string {
+  if (font.widthOfTextAtSize(text, size) <= maxW) return text;
+  const ell = "...";
+  const ellW = font.widthOfTextAtSize(ell, size);
+  let s = text;
+  while (s.length > 1 && font.widthOfTextAtSize(s, size) + ellW > maxW) {
+    s = s.slice(0, -1);
+  }
+  return s + ell;
+}
+
+function wrapToLines(
+  text: string,
+  font: PDFFont,
+  size: number,
+  maxW: number,
+  maxLines: number
+): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    const trial = cur ? `${cur} ${w}` : w;
+    if (font.widthOfTextAtSize(trial, size) <= maxW) {
+      cur = trial;
+    } else {
+      if (cur) lines.push(cur);
+      cur = font.widthOfTextAtSize(w, size) <= maxW
+        ? w
+        : clipToWidth(w, font, size, maxW);
+      if (lines.length >= maxLines) break;
+    }
+  }
+  if (cur && lines.length < maxLines) lines.push(cur);
+  if (
+    lines.length === maxLines &&
+    words.length > lines.join(" ").split(" ").length
+  ) {
+    lines[maxLines - 1] =
+      clipToWidth(
+        lines[maxLines - 1],
+        font,
+        size,
+        maxW - font.widthOfTextAtSize("...", size)
+      ).replace(/\.{3}$/, "") + "...";
+  }
+  return lines;
+}
+
+// Embed a PNG/JPG from disk, swallowing failures so a broken image never
+// breaks invoice generation. Returns null if the file is missing/unreadable
+// or in an unsupported format.
+async function tryEmbedImage(
+  doc: PDFDocument,
+  filePath: string | null | undefined
+): Promise<PDFImage | null> {
+  if (!filePath) return null;
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const bytes = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === ".png") return await doc.embedPng(bytes);
+    if (ext === ".jpg" || ext === ".jpeg") return await doc.embedJpg(bytes);
+    return null;
+  } catch (err) {
+    console.error("[invoicePdf] failed to embed image", filePath, err);
+    return null;
+  }
+}
+
+// Scale an image to fit inside a (maxW × maxH) box while preserving aspect.
+function fitImage(
+  img: PDFImage,
+  maxW: number,
+  maxH: number
+): { width: number; height: number } {
+  const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+  return { width: img.width * scale, height: img.height * scale };
+}
+
 export async function generateInvoicePdf(
   invoice: Invoice,
   center: CenterProfile,
@@ -87,7 +210,6 @@ export async function generateInvoicePdf(
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  // A4 portrait: 595 x 842 points.
   const page = doc.addPage([595, 842]);
   const { width, height } = page.getSize();
   const marginX = 48;
@@ -95,29 +217,72 @@ export async function generateInvoicePdf(
   const ink = rgb(0.12, 0.14, 0.18);
   const mute = rgb(0.45, 0.48, 0.55);
   const line = rgb(0.85, 0.87, 0.9);
+  const stripe = rgb(0.96, 0.97, 0.98);
 
-  let y = height - marginY;
+  const logoImg = await tryEmbedImage(doc, center?.logoFile);
+  const upiQrImg = await tryEmbedImage(doc, center?.upiQrFile);
 
-  // ── Header: center name + invoice label ────────────────────────────────
-  const centerName = sanitize(center?.centerName) || "CSC Center";
-  page.drawText(centerName, {
-    x: marginX,
-    y,
-    size: 20,
-    font: bold,
-    color: ink,
-  });
+  // ── Header ──────────────────────────────────────────────────────────────
+  // Two columns: left holds [logo] + center identity, right holds INVOICE
+  // label + meta block. Both columns share a fixed top edge so they always
+  // baseline-align.
+  const headerTop = height - marginY;
+  const LOGO_BOX = 56; // square box reserved for the logo
+  const logoSize = logoImg ? fitImage(logoImg, LOGO_BOX, LOGO_BOX) : null;
+  const logoW = logoSize?.width ?? 0;
+  const logoGap = logoImg ? 14 : 0;
+
+  if (logoImg && logoSize) {
+    page.drawImage(logoImg, {
+      x: marginX,
+      y: headerTop - logoSize.height,
+      width: logoSize.width,
+      height: logoSize.height,
+    });
+  }
+
+  // INVOICE label sits at the top-right and is always drawn at the same size
+  // so the right column has a predictable visual anchor.
   const invoiceLabel = "INVOICE";
-  const labelWidth = bold.widthOfTextAtSize(invoiceLabel, 20);
-  page.drawText(invoiceLabel, {
-    x: width - marginX - labelWidth,
-    y,
-    size: 20,
+  const invoiceLabelSize = 22;
+  const invoiceLabelW = bold.widthOfTextAtSize(invoiceLabel, invoiceLabelSize);
+
+  const centerName = sanitize(center?.centerName) || "CSC Center";
+  const leftTextX = marginX + logoW + logoGap;
+  const centerNameMaxW =
+    width - marginX * 2 - invoiceLabelW - 24 - (logoW + logoGap);
+  let centerNameSize = 18;
+  while (
+    centerNameSize > 11 &&
+    bold.widthOfTextAtSize(centerName, centerNameSize) > centerNameMaxW
+  ) {
+    centerNameSize -= 1;
+  }
+  const centerNameDrawn =
+    bold.widthOfTextAtSize(centerName, centerNameSize) > centerNameMaxW
+      ? clipToWidth(centerName, bold, centerNameSize, centerNameMaxW)
+      : centerName;
+
+  // Top-line baseline: place center name so its visual top aligns with the
+  // logo top. pdf-lib draws text from the baseline, so subtract size.
+  const nameBaseline = headerTop - centerNameSize;
+  page.drawText(centerNameDrawn, {
+    x: leftTextX,
+    y: nameBaseline,
+    size: centerNameSize,
     font: bold,
     color: ink,
   });
-  y -= 20;
+  page.drawText(invoiceLabel, {
+    x: width - marginX - invoiceLabelW,
+    y: headerTop - invoiceLabelSize,
+    size: invoiceLabelSize,
+    font: bold,
+    color: ink,
+  });
 
+  // Address block under the center name (left column).
+  let leftY = nameBaseline - 14;
   const addrLines = [
     sanitize(center?.address),
     [sanitize(center?.mobile), sanitize(center?.email)]
@@ -126,20 +291,25 @@ export async function generateInvoicePdf(
     center?.udyamNumber ? `Udyam: ${sanitize(center.udyamNumber)}` : "",
   ].filter(Boolean);
   for (const ln of addrLines) {
-    y -= 12;
-    page.drawText(ln, { x: marginX, y, size: 9, font, color: mute });
+    page.drawText(clipToWidth(ln, font, 9, centerNameMaxW), {
+      x: leftTextX,
+      y: leftY,
+      size: 9,
+      font,
+      color: mute,
+    });
+    leftY -= 12;
   }
 
-  // Invoice meta block (right-aligned)
-  const metaRows = [
+  // Meta block (right column, right-aligned). Sits below the INVOICE label.
+  const metaRows: Array<[string, string]> = [
     ["Invoice #", sanitize(invoice.invoiceNo)],
     ["Date", formatDateShort(invoice.createdAt)],
     ["Status", sanitize(invoice.status)],
     ["Payment", sanitize(invoice.paymentMode)],
   ];
-  let metaY = height - marginY - 20;
+  let metaY = headerTop - invoiceLabelSize - 14;
   for (const [k, v] of metaRows) {
-    metaY -= 12;
     const kText = `${k}:`;
     const kW = font.widthOfTextAtSize(kText, 9);
     const vW = bold.widthOfTextAtSize(v, 9);
@@ -157,16 +327,19 @@ export async function generateInvoicePdf(
       font: bold,
       color: ink,
     });
+    metaY -= 12;
   }
 
-  y = Math.min(y, metaY) - 18;
+  // The cursor drops to the lower of the two columns plus the logo bottom.
+  const logoBottom = logoImg && logoSize ? headerTop - logoSize.height : headerTop;
+  let y = Math.min(leftY, metaY, logoBottom) - 10;
   page.drawLine({
     start: { x: marginX, y },
     end: { x: width - marginX, y },
     thickness: 0.8,
     color: line,
   });
-  y -= 22;
+  y -= 18;
 
   // ── Bill To ─────────────────────────────────────────────────────────────
   page.drawText("BILL TO", {
@@ -177,13 +350,16 @@ export async function generateInvoicePdf(
     color: mute,
   });
   y -= 14;
-  page.drawText(sanitize(invoice.customer?.name) || "-", {
-    x: marginX,
-    y,
-    size: 11,
-    font: bold,
-    color: ink,
-  });
+  const billToMaxW = width - marginX * 2;
+  page.drawText(
+    clipToWidth(
+      sanitize(invoice.customer?.name) || "-",
+      bold,
+      11,
+      billToMaxW
+    ),
+    { x: marginX, y, size: 11, font: bold, color: ink }
+  );
   for (const ln of [
     sanitize(invoice.customer?.mobile),
     sanitize(invoice.customer?.email),
@@ -191,50 +367,68 @@ export async function generateInvoicePdf(
   ]) {
     if (!ln) continue;
     y -= 12;
-    page.drawText(ln, { x: marginX, y, size: 9, font, color: mute });
+    page.drawText(clipToWidth(ln, font, 9, billToMaxW), {
+      x: marginX,
+      y,
+      size: 9,
+      font,
+      color: mute,
+    });
   }
 
-  y -= 24;
+  y -= 22;
 
   // ── Items table ─────────────────────────────────────────────────────────
-  const colX = {
-    desc: marginX,
-    qty: marginX + 320,
-    rate: marginX + 360,
-    tax: marginX + 420,
-    total: width - marginX,
+  const COL = {
+    descX: marginX,
+    descMaxW: 240,
+    qtyRight: marginX + 300,
+    rateRight: marginX + 384,
+    taxRight: marginX + 444,
+    totalRight: width - marginX,
   };
+
+  // Header band
   page.drawRectangle({
     x: marginX - 6,
     y: y - 6,
     width: width - marginX * 2 + 12,
-    height: 20,
-    color: rgb(0.96, 0.97, 0.98),
+    height: 18,
+    color: stripe,
   });
+  const headerSize = 8;
+  const drawHeaderRight = (text: string, rightX: number) => {
+    const w = bold.widthOfTextAtSize(text, headerSize);
+    page.drawText(text, {
+      x: rightX - w,
+      y,
+      size: headerSize,
+      font: bold,
+      color: mute,
+    });
+  };
   page.drawText("DESCRIPTION", {
-    x: colX.desc,
+    x: COL.descX,
     y,
-    size: 8,
+    size: headerSize,
     font: bold,
     color: mute,
   });
-  const drawRight = (text: string, rightX: number, size = 8, f = bold) => {
-    const w = f.widthOfTextAtSize(text, size);
-    page.drawText(text, { x: rightX - w, y, size, font: f, color: mute });
-  };
-  drawRight("QTY", colX.qty + 28, 8);
-  drawRight("RATE", colX.rate + 48, 8);
-  drawRight("TAX%", colX.tax + 48, 8);
-  drawRight("AMOUNT", colX.total, 8);
-  y -= 22;
+  drawHeaderRight("QTY", COL.qtyRight);
+  drawHeaderRight("RATE", COL.rateRight);
+  drawHeaderRight("TAX%", COL.taxRight);
+  drawHeaderRight("AMOUNT", COL.totalRight);
+  y -= 18;
+
+  // Reserve vertical room for the footer (UPI block + divider) plus totals
+  // and notes. Items truncate before they encroach.
+  const FOOTER_BAND_H = upiQrImg ? 96 : 36;
+  const FOOTER_FLOOR = marginY + FOOTER_BAND_H + 90;
 
   for (const item of invoice.items) {
-    if (y < marginY + 180) {
-      // Overflow: stop rendering further items rather than spilling onto a
-      // second page. Billing-center invoices rarely exceed one page; we can
-      // revisit with pagination if this becomes a real limit.
+    if (y < FOOTER_FLOOR + 22) {
       page.drawText("... more items truncated ...", {
-        x: marginX,
+        x: COL.descX,
         y,
         size: 9,
         font,
@@ -243,39 +437,57 @@ export async function generateInvoicePdf(
       y -= 14;
       break;
     }
-    const desc =
+
+    const rawDesc =
       sanitize(item.description) ||
       sanitize(item.service?.name) ||
       "Service";
-    page.drawText(desc.slice(0, 60), {
-      x: colX.desc,
-      y,
-      size: 10,
-      font,
-      color: ink,
-    });
-    const drawRightInk = (text: string, rightX: number) => {
+    const descLines = wrapToLines(rawDesc, font, 10, COL.descMaxW, 2);
+    const rowH = Math.max(16, descLines.length * 12 + 4);
+
+    const drawRowRight = (text: string, rightX: number) => {
       const w = font.widthOfTextAtSize(text, 10);
-      page.drawText(text, { x: rightX - w, y, size: 10, font, color: ink });
+      page.drawText(text, {
+        x: rightX - w,
+        y,
+        size: 10,
+        font,
+        color: ink,
+      });
     };
-    drawRightInk(String(item.qty), colX.qty + 28);
-    drawRightInk(money(item.rate), colX.rate + 48);
-    drawRightInk(`${item.taxRate.toFixed(2)}%`, colX.tax + 48);
-    drawRightInk(money(item.lineTotal), colX.total);
-    y -= 16;
+
+    let descY = y;
+    for (const ln of descLines) {
+      page.drawText(ln, {
+        x: COL.descX,
+        y: descY,
+        size: 10,
+        font,
+        color: ink,
+      });
+      descY -= 12;
+    }
+
+    drawRowRight(String(item.qty), COL.qtyRight);
+    drawRowRight(money(item.rate), COL.rateRight);
+    drawRowRight(`${item.taxRate.toFixed(2)}%`, COL.taxRight);
+    drawRowRight(money(item.lineTotal), COL.totalRight);
+
+    y -= rowH;
     page.drawLine({
       start: { x: marginX, y: y + 4 },
       end: { x: width - marginX, y: y + 4 },
       thickness: 0.3,
       color: line,
     });
-    y -= 2;
+    y -= 4;
   }
 
-  y -= 14;
+  y -= 10;
 
-  // ── Totals block (right) ────────────────────────────────────────────────
-  const totalsX = width - marginX;
+  // ── Totals (right-aligned) ─────────────────────────────────────────────
+  const totalsRight = width - marginX;
+  const totalsLabelGap = 18;
   const drawTotalsRow = (
     label: string,
     value: string,
@@ -286,14 +498,14 @@ export async function generateInvoicePdf(
     const labelW = f.widthOfTextAtSize(label, size);
     const valueW = f.widthOfTextAtSize(value, size);
     page.drawText(label, {
-      x: totalsX - valueW - 18 - labelW,
+      x: totalsRight - valueW - totalsLabelGap - labelW,
       y,
       size,
       font: f,
       color: emphasize ? ink : mute,
     });
     page.drawText(value, {
-      x: totalsX - valueW,
+      x: totalsRight - valueW,
       y,
       size,
       font: f,
@@ -307,19 +519,22 @@ export async function generateInvoicePdf(
   if (invoice.discount > 0) {
     drawTotalsRow("Discount", `- ${money(invoice.discount)}`);
   }
-  y -= 4;
   page.drawLine({
-    start: { x: totalsX - 220, y: y + 10 },
-    end: { x: totalsX, y: y + 10 },
+    start: { x: totalsRight - 220, y: y + 4 },
+    end: { x: totalsRight, y: y + 4 },
     thickness: 0.8,
     color: line,
   });
+  y -= 4;
   drawTotalsRow("Total", money(invoice.total), true);
 
   // ── Notes ───────────────────────────────────────────────────────────────
-  const customerNotes = sanitize(invoice.customerNotes);
-  if (customerNotes) {
-    y -= 10;
+  const NOTES_TOP = y - 10;
+  const FOOTER_TOP_Y = marginY + FOOTER_BAND_H;
+  const notesAvailH = NOTES_TOP - FOOTER_TOP_Y - 6;
+  const noteParas = sanitizeMultiline(invoice.customerNotes);
+  if (noteParas.length > 0 && notesAvailH >= 24) {
+    y = NOTES_TOP;
     page.drawText("NOTES", {
       x: marginX,
       y,
@@ -328,43 +543,84 @@ export async function generateInvoicePdf(
       color: mute,
     });
     y -= 12;
-    for (const ln of customerNotes.split("\n").slice(0, 6)) {
-      page.drawText(ln.slice(0, 90), {
-        x: marginX,
-        y,
-        size: 9,
+    const notesMaxLines = Math.max(1, Math.floor((notesAvailH - 12) / 12));
+    const notesMaxW = width - marginX * 2;
+    let lineCount = 0;
+    outer: for (const para of noteParas) {
+      const wrapped = wrapToLines(
+        para,
         font,
-        color: ink,
-      });
-      y -= 12;
+        9,
+        notesMaxW,
+        notesMaxLines - lineCount
+      );
+      for (const ln of wrapped) {
+        if (lineCount >= notesMaxLines) break outer;
+        page.drawText(ln, { x: marginX, y, size: 9, font, color: ink });
+        y -= 12;
+        lineCount += 1;
+      }
     }
   }
 
-  // ── Footer ──────────────────────────────────────────────────────────────
-  const upiId = sanitize(center?.upiId);
-  const footerY = marginY - 12;
+  // ── Footer (UPI + QR + generated stamp) ─────────────────────────────────
+  const footerDividerY = marginY + FOOTER_BAND_H - 4;
   page.drawLine({
-    start: { x: marginX, y: footerY + 20 },
-    end: { x: width - marginX, y: footerY + 20 },
+    start: { x: marginX, y: footerDividerY },
+    end: { x: width - marginX, y: footerDividerY },
     thickness: 0.5,
     color: line,
   });
+
+  const upiId = sanitize(center?.upiId);
+  const footerBaseY = marginY - 6;
+
+  // QR (right-aligned, sits above the generated stamp). Bottom edge of the
+  // QR aligns with `footerBaseY + ~36` so it never overlaps the right-side
+  // text below it.
+  let qrLeftEdge = width - marginX;
+  if (upiQrImg) {
+    const qrSize = fitImage(upiQrImg, 64, 64);
+    const qrX = width - marginX - qrSize.width;
+    const qrY = footerDividerY - qrSize.height - 6;
+    page.drawImage(upiQrImg, {
+      x: qrX,
+      y: qrY,
+      width: qrSize.width,
+      height: qrSize.height,
+    });
+    qrLeftEdge = qrX - 8;
+    // "Scan to pay" caption under the QR.
+    const cap = "Scan to pay";
+    const capW = font.widthOfTextAtSize(cap, 8);
+    page.drawText(cap, {
+      x: qrX + (qrSize.width - capW) / 2,
+      y: qrY - 10,
+      size: 8,
+      font,
+      color: mute,
+    });
+  }
+
+  // Left side of the footer: UPI ID (or thank-you fallback).
+  const footerLeftMaxW = qrLeftEdge - marginX - 8;
   const footerLeft = upiId
     ? `Pay via UPI: ${upiId}`
     : "Thank you for your business";
-  page.drawText(footerLeft, {
+  page.drawText(clipToWidth(footerLeft, font, 9, Math.max(80, footerLeftMaxW)), {
     x: marginX,
-    y: footerY,
+    y: footerDividerY - 16,
     size: 9,
-    font,
-    color: mute,
+    font: upiId ? bold : font,
+    color: upiId ? ink : mute,
   });
+
+  // "Generated …" stamp at the bottom-left.
   const genText = `Generated ${formatDateShort(new Date())}`;
-  const genW = font.widthOfTextAtSize(genText, 9);
   page.drawText(genText, {
-    x: width - marginX - genW,
-    y: footerY,
-    size: 9,
+    x: marginX,
+    y: footerBaseY,
+    size: 8,
     font,
     color: mute,
   });

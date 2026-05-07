@@ -1,12 +1,19 @@
 // src/app/settings/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { useToast } from "@/components/Toast";
-import type { CenterProfile } from "@/shared/types";
+import { useAuth } from "@/lib/auth-context";
+import {
+  ALLOWED_BRANDING_MIME,
+  MAX_BRANDING_ASSET_BYTES,
+  type BrandingAssetKind,
+  type CenterProfile,
+} from "@/shared/types";
 import {
   Building2,
   Receipt,
@@ -14,9 +21,13 @@ import {
   Clock,
   Save,
   Loader2,
-  Info,
+  Image as ImageIcon,
+  QrCode,
+  Trash2,
+  Upload,
   Printer,
   PrinterIcon,
+  Lock,
 } from "lucide-react";
 
 // ── Form state mirrors all editable fields from CenterProfile ────────────────
@@ -136,18 +147,152 @@ function FieldLabel({
   );
 }
 
+// ── Branding uploader (admin only) ───────────────────────────────────────────
+function BrandingUploader({
+  title,
+  description,
+  icon: Icon,
+  previewUrl,
+  uploading,
+  inputRef,
+  onPick,
+  onDelete,
+  previewClassName,
+  placeholder,
+}: {
+  kind: BrandingAssetKind;
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  previewUrl: string | null;
+  uploading: boolean;
+  inputRef: React.RefObject<HTMLInputElement>;
+  onPick: (file: File | null) => void;
+  onDelete: () => void;
+  previewClassName: string;
+  placeholder: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-background/40 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+      </div>
+      <div className="flex items-start gap-4">
+        <div
+          className={cn(
+            "flex h-24 w-24 shrink-0 items-center justify-center rounded-lg border border-dashed border-border bg-card text-[11px] text-muted-foreground"
+          )}
+        >
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt={title}
+              className={previewClassName}
+            />
+          ) : (
+            <span className="px-2 text-center">{placeholder}</span>
+          )}
+        </div>
+        <div className="flex flex-1 flex-col gap-2">
+          <p className="text-xs text-muted-foreground">{description}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={inputRef}
+              type="file"
+              accept={ALLOWED_BRANDING_MIME.join(",")}
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                onPick(f);
+                // Reset so the same filename can be re-picked.
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5",
+                "text-xs font-medium text-foreground transition-colors hover:bg-background",
+                "disabled:opacity-60"
+              )}
+            >
+              {uploading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Upload className="h-3.5 w-3.5" />
+              )}
+              {previewUrl ? "Replace" : "Upload"}
+            </button>
+            {previewUrl && (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={uploading}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5",
+                  "text-xs font-medium text-red-700 transition-colors hover:bg-red-100",
+                  "disabled:opacity-60"
+                )}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState<number>(0);
   const [form, setForm] = useState<SettingsForm>(DEFAULT_FORM);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [upiQrUrl, setUpiQrUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<BrandingAssetKind | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const qrInputRef = useRef<HTMLInputElement>(null);
 
   const [testingPrinter, setTestingPrinter] = useState(false);
+  const isAdmin = user?.role === "admin";
+
+  // Page-level guard: viewer/staff cannot manage settings. Backend enforces
+  // it too; this just keeps the URL from rendering a confusing "saving fails"
+  // experience.
+  useEffect(() => {
+    if (!user) return;
+    if (user.role !== "admin") {
+      router.replace("/");
+    }
+  }, [user, router]);
 
   const set = <K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  const loadAsset = useCallback(
+    async (kind: BrandingAssetKind): Promise<string | null> => {
+      try {
+        const res = await ipc<{ dataUrl: string | null }>(
+          IPC.CENTER_GET_BRANDING_ASSET,
+          kind
+        );
+        return res?.dataUrl ?? null;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
 
   const loadProfile = useCallback(async () => {
     try {
@@ -156,6 +301,12 @@ export default function SettingsPage() {
         setForm(profileToForm(profile));
         setInvoiceNumber(profile.invoiceNumber ?? 0);
       }
+      const [logo, qr] = await Promise.all([
+        loadAsset("logo"),
+        loadAsset("upiQr"),
+      ]);
+      setLogoUrl(logo);
+      setUpiQrUrl(qr);
     } catch (err) {
       toast(
         err instanceof IpcError ? err.message : "Failed to load settings",
@@ -164,11 +315,83 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, loadAsset]);
 
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  // ── Branding upload helpers ────────────────────────────────────────────
+  const handleBrandingFile = async (
+    kind: BrandingAssetKind,
+    file: File | null
+  ) => {
+    if (!file) return;
+    if (
+      !ALLOWED_BRANDING_MIME.includes(
+        file.type as (typeof ALLOWED_BRANDING_MIME)[number]
+      )
+    ) {
+      toast("Use a PNG or JPEG image.", "error");
+      return;
+    }
+    if (file.size > MAX_BRANDING_ASSET_BYTES) {
+      toast(
+        `Image is too large (max ${Math.round(
+          MAX_BRANDING_ASSET_BYTES / 1024 / 1024
+        )} MB).`,
+        "error"
+      );
+      return;
+    }
+    setUploading(kind);
+    try {
+      const buf = await file.arrayBuffer();
+      await ipc<CenterProfile>(IPC.CENTER_UPLOAD_BRANDING, {
+        kind,
+        mimeType: file.type,
+        data: new Uint8Array(buf),
+      });
+      const next = await loadAsset(kind);
+      if (kind === "logo") setLogoUrl(next);
+      else setUpiQrUrl(next);
+      toast(
+        `${kind === "logo" ? "Logo" : "UPI QR"} updated`,
+        "success"
+      );
+    } catch (err) {
+      toast(
+        err instanceof IpcError
+          ? err.message
+          : `Failed to upload ${kind === "logo" ? "logo" : "UPI QR"}`,
+        "error"
+      );
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const handleBrandingDelete = async (kind: BrandingAssetKind) => {
+    setUploading(kind);
+    try {
+      await ipc(IPC.CENTER_DELETE_BRANDING, kind);
+      if (kind === "logo") setLogoUrl(null);
+      else setUpiQrUrl(null);
+      toast(
+        `${kind === "logo" ? "Logo" : "UPI QR"} removed`,
+        "success"
+      );
+    } catch (err) {
+      toast(
+        err instanceof IpcError
+          ? err.message
+          : `Failed to remove ${kind === "logo" ? "logo" : "UPI QR"}`,
+        "error"
+      );
+    } finally {
+      setUploading(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,6 +458,17 @@ export default function SettingsPage() {
       <div className="flex h-64 items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin" />
         <span className="text-sm">Loading settings…</span>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    // Redirect already fired in the effect; render a stable placeholder so we
+    // don't flash an unauthorized form.
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Lock className="h-8 w-8" />
+        <p className="text-sm">Settings are admin-only.</p>
       </div>
     );
   }
@@ -434,14 +668,43 @@ export default function SettingsPage() {
         </div>
       </SectionCard>
 
-      {/* ── Section 3: UPI & Payment ─────────────────────────────────── */}
+      {/* ── Section 3: Branding (Logo + UPI QR + UPI ID) ───────────────── */}
       <SectionCard
         icon={Wallet}
-        title="UPI & Payment"
-        subtitle="Shown in the invoice PDF footer so customers can pay you directly"
+        title="Branding & Payment"
+        subtitle="Logo and UPI QR are embedded into every invoice PDF"
       >
-        <div className="max-w-md space-y-1">
-          <FieldLabel hint="optional">UPI ID</FieldLabel>
+        <div className="grid gap-6 md:grid-cols-2">
+          <BrandingUploader
+            kind="logo"
+            title="Company Logo"
+            description="Shown in the top-left of every invoice. PNG or JPEG, max 2 MB."
+            icon={ImageIcon}
+            previewUrl={logoUrl}
+            uploading={uploading === "logo"}
+            inputRef={logoInputRef}
+            onPick={(file) => handleBrandingFile("logo", file)}
+            onDelete={() => handleBrandingDelete("logo")}
+            previewClassName="h-24 w-24 object-contain"
+            placeholder="No logo uploaded"
+          />
+          <BrandingUploader
+            kind="upiQr"
+            title="UPI QR Code"
+            description="Printed in the invoice footer so customers can scan to pay."
+            icon={QrCode}
+            previewUrl={upiQrUrl}
+            uploading={uploading === "upiQr"}
+            inputRef={qrInputRef}
+            onPick={(file) => handleBrandingFile("upiQr", file)}
+            onDelete={() => handleBrandingDelete("upiQr")}
+            previewClassName="h-24 w-24 object-contain"
+            placeholder="No UPI QR uploaded"
+          />
+        </div>
+
+        <div className="mt-6 max-w-md">
+          <FieldLabel hint="optional">UPI ID (text)</FieldLabel>
           <input
             type="text"
             value={form.upiId}
@@ -449,17 +712,9 @@ export default function SettingsPage() {
             placeholder="yourname@upi"
             className={inputCls}
           />
-          <p className="pt-1 text-[11px] text-muted-foreground">
-            Printed in the PDF footer as: "Pay via UPI: yourname@upi"
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Printed alongside the QR as "Pay via UPI: yourname@upi".
           </p>
-        </div>
-
-        <div className="mt-4 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            Logo and UPI QR image upload will be available in the next update.
-            For now, the UPI ID will appear as text on your invoices.
-          </span>
         </div>
       </SectionCard>
 

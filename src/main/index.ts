@@ -17,6 +17,10 @@ import {
   serviceSchema,
   createInvoiceSchema,
   centerProfileUpdateSchema,
+  uploadBrandingSchema,
+  brandingAssetKindSchema,
+  ALLOWED_BRANDING_MIME,
+  type BrandingAssetKind,
   InvoiceStatus,
   servicesImportSchema,
   bulkUpdateServicesSchema,
@@ -982,9 +986,9 @@ function registerIpcHandlers() {
     IPC.CENTER_UPDATE,
     { auth: "session", roles: ADMIN_ONLY },
     (_ctx, raw) => {
-      // centerProfileUpdateSchema explicitly omits pinHash and invoiceNumber:
-      // a renderer cannot wipe the PIN or reset the invoice counter through
-      // this endpoint.
+      // centerProfileUpdateSchema explicitly omits pinHash, invoiceNumber,
+      // logoPath, and upiQrPath: a renderer cannot wipe the PIN, reset the
+      // invoice counter, or repoint asset paths through this endpoint.
       const data = parseArg(
         centerProfileUpdateSchema,
         raw,
@@ -995,6 +999,123 @@ function registerIpcHandlers() {
         .where(eq(schema.centerProfiles.id, 1))
         .run();
       return db.select().from(schema.centerProfiles).get();
+    }
+  );
+
+  // ── Branding assets (logo + UPI QR) ──────────────────────────────────────
+  // Files live in `userData/uploads/` under deterministic names so we never
+  // accumulate stale copies. The DB only stores the basename — never an
+  // absolute path the renderer supplies — so the renderer cannot point the
+  // PDF generator at arbitrary disk locations.
+  function brandingFilename(kind: BrandingAssetKind, ext: string): string {
+    return `${kind === "logo" ? "logo" : "upi-qr"}.${ext}`;
+  }
+  function extForMime(mime: string): "png" | "jpg" {
+    return mime === "image/jpeg" ? "jpg" : "png";
+  }
+  function resolveBrandingFile(stored: string | null | undefined): string | null {
+    if (!stored) return null;
+    // `stored` must be a bare filename. Reject anything that tries to escape.
+    if (stored.includes("/") || stored.includes("\\") || stored.includes("..")) {
+      return null;
+    }
+    const full = path.join(uploadsPath, stored);
+    return fs.existsSync(full) ? full : null;
+  }
+  function clearOldBrandingFiles(kind: BrandingAssetKind): void {
+    const prefix = kind === "logo" ? "logo." : "upi-qr.";
+    if (!fs.existsSync(uploadsPath)) return;
+    for (const name of fs.readdirSync(uploadsPath)) {
+      if (name.startsWith(prefix)) {
+        try {
+          fs.unlinkSync(path.join(uploadsPath, name));
+        } catch {
+          // best effort
+        }
+      }
+    }
+  }
+
+  safeHandle(
+    IPC.CENTER_UPLOAD_BRANDING,
+    { auth: "session", roles: ADMIN_ONLY },
+    (_ctx, raw) => {
+      const payload = parseArg(
+        uploadBrandingSchema,
+        raw,
+        "center:upload-branding"
+      );
+      if (!ALLOWED_BRANDING_MIME.includes(payload.mimeType)) {
+        throw new Error("Unsupported image type. Use PNG or JPEG.");
+      }
+      if (!fs.existsSync(uploadsPath)) {
+        fs.mkdirSync(uploadsPath, { recursive: true });
+      }
+      const ext = extForMime(payload.mimeType);
+      const filename = brandingFilename(payload.kind, ext);
+      const fullPath = path.join(uploadsPath, filename);
+      // Ensure no other extension copy lingers when format changes.
+      clearOldBrandingFiles(payload.kind);
+      fs.writeFileSync(fullPath, Buffer.from(payload.data));
+
+      db.update(schema.centerProfiles)
+        .set(
+          payload.kind === "logo"
+            ? { logoPath: filename }
+            : { upiQrPath: filename }
+        )
+        .where(eq(schema.centerProfiles.id, 1))
+        .run();
+
+      return db.select().from(schema.centerProfiles).get();
+    }
+  );
+
+  safeHandle(
+    IPC.CENTER_DELETE_BRANDING,
+    { auth: "session", roles: ADMIN_ONLY },
+    (_ctx, raw) => {
+      const kind = parseArg(
+        brandingAssetKindSchema,
+        raw,
+        "center:delete-branding"
+      );
+      clearOldBrandingFiles(kind);
+      db.update(schema.centerProfiles)
+        .set(kind === "logo" ? { logoPath: null } : { upiQrPath: null })
+        .where(eq(schema.centerProfiles.id, 1))
+        .run();
+      return db.select().from(schema.centerProfiles).get();
+    }
+  );
+
+  // Read a branding asset as a base64 data URL so the renderer can preview
+  // it without us exposing the filesystem. Available to any authed user
+  // since these images are public-facing on every invoice.
+  safeHandle(
+    IPC.CENTER_GET_BRANDING_ASSET,
+    { auth: "session", roles: ANY_AUTHED },
+    (_ctx, raw) => {
+      const kind = parseArg(
+        brandingAssetKindSchema,
+        raw,
+        "center:get-branding-asset"
+      );
+      const profile = db
+        .select({
+          logoPath: schema.centerProfiles.logoPath,
+          upiQrPath: schema.centerProfiles.upiQrPath,
+        })
+        .from(schema.centerProfiles)
+        .where(eq(schema.centerProfiles.id, 1))
+        .get();
+      const stored = kind === "logo" ? profile?.logoPath : profile?.upiQrPath;
+      const file = resolveBrandingFile(stored ?? null);
+      if (!file) return { dataUrl: null };
+      const ext = path.extname(file).toLowerCase();
+      const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : "image/png";
+      const data = fs.readFileSync(file);
+      return { dataUrl: `data:${mime};base64,${data.toString("base64")}` };
     }
   );
 
@@ -1758,6 +1879,24 @@ function registerIpcHandlers() {
         .where(eq(schema.centerProfiles.id, 1))
         .get() ?? null;
 
+    // Resolve branding files inside uploadsPath only — filenames stored in
+    // the DB are bare basenames; refuse anything that tries to escape.
+    const resolveBranding = (name: string | null | undefined): string | null => {
+      if (!name) return null;
+      if (name.includes("/") || name.includes("\\") || name.includes("..")) {
+        return null;
+      }
+      const full = path.join(uploadsPath, name);
+      return fs.existsSync(full) ? full : null;
+    };
+    const centerForPdf = center
+      ? {
+          ...center,
+          logoFile: resolveBranding(center.logoPath),
+          upiQrFile: resolveBranding(center.upiQrPath),
+        }
+      : null;
+
     const safeName = invoice.invoiceNo.replace(/[^A-Za-z0-9_-]/g, "_");
     const defaultPath = path.join(
       app.getPath("downloads"),
@@ -1777,7 +1916,7 @@ function registerIpcHandlers() {
       outPath = result.filePath;
     }
 
-    await generateInvoicePdf(invoice, center, outPath);
+    await generateInvoicePdf(invoice, centerForPdf, outPath);
 
     // Stamp printedAt so the list reflects that the invoice has been produced.
     db.update(schema.invoices)

@@ -14,6 +14,7 @@ import {
   FilePlus,
   FileText,
   Users,
+  UserCog,
   Briefcase,
   BarChart3,
   HardDrive,
@@ -28,31 +29,6 @@ import {
   Moon,
   Monitor,
 } from "lucide-react";
-
-// ── Navigation Config ────────────────────────────────────────────────────────
-const NAV_SECTIONS = [
-  {
-    label: "Main",
-    items: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/billing/new", label: "New Invoice", icon: FilePlus },
-      { href: "/invoices", label: "Invoices", icon: FileText },
-      { href: "/customers", label: "Customers", icon: Users },
-      { href: "/services", label: "Services", icon: Briefcase },
-    ],
-  },
-  {
-    label: "Insights",
-    items: [{ href: "/reports", label: "Reports", icon: BarChart3 }],
-  },
-  {
-    label: "System",
-    items: [
-      { href: "/settings/backup", label: "Backup", icon: HardDrive },
-      { href: "/settings", label: "Settings", icon: Settings },
-    ],
-  },
-];
 
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { SidebarProvider, useSidebar } from "@/lib/sidebar-context";
@@ -104,8 +80,9 @@ function SidebarNav() {
     {
       label: "System",
       items: [
+        { href: "/settings/users", label: "Users & Roles", icon: UserCog, roles: ["admin"] },
         { href: "/settings/backup", label: "Backup", icon: HardDrive, roles: ["admin"] },
-        { href: "/settings", label: "Settings", icon: Settings, roles: ["admin", "staff"] },
+        { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] },
       ],
     },
   ];

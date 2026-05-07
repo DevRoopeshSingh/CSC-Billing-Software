@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { useToast } from "@/components/Toast";
+import { useAuth } from "@/lib/auth-context";
 import type { Service, Customer, CenterProfile } from "@/shared/types";
 import { InvoiceFormUI } from "@/components/billing/InvoiceFormUI";
 import {
@@ -12,11 +13,13 @@ import {
   useInvoiceTotals,
   buildInvoicePayload,
 } from "@/components/billing/useInvoiceState";
+import { Lock } from "lucide-react";
 
 function NewInvoiceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [services, setServices] = useState<Service[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -103,6 +106,19 @@ function NewInvoiceContent() {
   const handlePreview = () => {
     toast("PDF preview is not implemented yet", "info");
   };
+
+  useEffect(() => {
+    if (user?.role === "viewer") router.replace("/invoices");
+  }, [user, router]);
+
+  if (user?.role === "viewer") {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Lock className="h-8 w-8" />
+        <p className="text-sm">Read-only role: invoice creation is disabled.</p>
+      </div>
+    );
+  }
 
   return (
     <InvoiceFormUI

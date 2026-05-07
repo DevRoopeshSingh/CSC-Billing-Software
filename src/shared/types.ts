@@ -112,13 +112,40 @@ export const centerProfileSchema = z.object({
 export type CenterProfile = z.infer<typeof centerProfileSchema>;
 
 // Locked-down payload accepted by CENTER_UPDATE. `pinHash`, `invoiceNumber`,
-// and `id` are deliberately removed: a renderer must not be able to wipe the
-// admin PIN, reset the invoice counter, or change the row id via this
-// endpoint. PIN changes go through AUTH_SET_PIN instead.
+// `logoPath`, `upiQrPath`, and `id` are deliberately removed: a renderer must
+// not be able to wipe the admin PIN, reset the invoice counter, change the
+// row id, or repoint branding paths to arbitrary disk locations via this
+// endpoint. PIN changes go through AUTH_SET_PIN; logos/QR through
+// CENTER_UPLOAD_BRANDING.
 export const centerProfileUpdateSchema = centerProfileSchema
-  .omit({ id: true, pinHash: true, invoiceNumber: true })
+  .omit({
+    id: true,
+    pinHash: true,
+    invoiceNumber: true,
+    logoPath: true,
+    upiQrPath: true,
+  })
   .partial();
 export type CenterProfileUpdate = z.infer<typeof centerProfileUpdateSchema>;
+
+export const brandingAssetKindSchema = z.enum(["logo", "upiQr"]);
+export type BrandingAssetKind = z.infer<typeof brandingAssetKindSchema>;
+
+// Upload payload travels over IPC as a Uint8Array (electron clones it as a
+// Buffer in the main process). Limit: 2 MB — enough for QR/logo PNGs, small
+// enough that a malicious renderer cannot DoS by streaming a giant blob.
+export const MAX_BRANDING_ASSET_BYTES = 2 * 1024 * 1024;
+export const ALLOWED_BRANDING_MIME = ["image/png", "image/jpeg"] as const;
+
+export const uploadBrandingSchema = z.object({
+  kind: brandingAssetKindSchema,
+  mimeType: z.enum(ALLOWED_BRANDING_MIME),
+  data: z.instanceof(Uint8Array).refine(
+    (b) => b.byteLength > 0 && b.byteLength <= MAX_BRANDING_ASSET_BYTES,
+    `data must be 1..${MAX_BRANDING_ASSET_BYTES} bytes`
+  ),
+});
+export type UploadBrandingRequest = z.infer<typeof uploadBrandingSchema>;
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 export const ServiceCategoryEnum = z.enum(

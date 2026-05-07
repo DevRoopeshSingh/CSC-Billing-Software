@@ -10,6 +10,9 @@ export const IPC = {
   // ── Center Profile ───────────────────────────────────────────────────────
   CENTER_GET: "center:get",
   CENTER_UPDATE: "center:update",
+  CENTER_UPLOAD_BRANDING: "center:upload-branding",
+  CENTER_DELETE_BRANDING: "center:delete-branding",
+  CENTER_GET_BRANDING_ASSET: "center:get-branding-asset",
 
   // ── Auth & Users ─────────────────────────────────────────────────────────
   USERS_CHECK_FIRST_RUN: "users:check-first-run",
