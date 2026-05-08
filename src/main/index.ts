@@ -1,7 +1,8 @@
 // src/main/index.ts
 // Electron main process: DB bootstrap, IPC handlers, window, standalone Next server.
 
-import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, Notification, shell } from "electron";
+import os from "os";
 import type { IpcMainInvokeEvent } from "electron";
 import path from "path";
 import fs from "fs";
@@ -1926,6 +1927,125 @@ function registerIpcHandlers() {
 
     return { path: outPath };
   });
+
+  // ── Invoice preview (no DB writes) ──────────────────────────────────────
+  // Renders the in-progress new-invoice form to a temp PDF and opens it in
+  // the OS default PDF viewer. Used by the "Preview" button on /billing/new
+  // so the operator can sanity-check layout before committing the invoice.
+  // No invoice number is allocated, no DB row is written, no counter bumped.
+  safeHandle(
+    IPC.INVOICES_PREVIEW_PDF,
+    { auth: "session", roles: STAFF_PLUS },
+    async (_ctx, raw) => {
+      const data = parseArg(createInvoiceSchema, raw, "invoices:preview-pdf");
+
+      // Resolve customer either from DB or from in-memory new-customer.
+      // Using a structural shape — the PDF generator accepts a loose Customer
+      // type with optional fields, so we don't need full DB-inferred types.
+      type PreviewCustomer = {
+        name?: string | null;
+        mobile?: string | null;
+        email?: string | null;
+        address?: string | null;
+      };
+      let customer: PreviewCustomer | null = null;
+      if (data.customerId) {
+        const row =
+          db
+            .select()
+            .from(schema.customers)
+            .where(eq(schema.customers.id, data.customerId))
+            .get() ?? null;
+        if (row) {
+          customer = {
+            name: row.name,
+            mobile: row.mobile,
+            email: row.email,
+            address: row.address,
+          };
+        }
+      } else if (data.newCustomer) {
+        customer = {
+          name: data.newCustomer.name,
+          mobile: data.newCustomer.mobile || null,
+        };
+      }
+      if (!customer) {
+        throw new Error("Select or create a customer before previewing.");
+      }
+
+      // Same totals math as INVOICES_CREATE so preview matches the saved PDF.
+      const items = data.items.map((it) => {
+        const rate = it.taxRate ?? 0;
+        const base = it.qty * it.rate;
+        const tax = +(base * (rate / 100)).toFixed(2);
+        return { ...it, taxRate: rate, lineTotal: +(base + tax).toFixed(2), tax };
+      });
+      const subtotal = +items
+        .reduce((s, it) => s + it.qty * it.rate, 0)
+        .toFixed(2);
+      const taxTotal = +items.reduce((s, it) => s + it.tax, 0).toFixed(2);
+      const discount = data.discount ?? 0;
+      const total = +(subtotal + taxTotal - discount).toFixed(2);
+
+      const center =
+        db
+          .select()
+          .from(schema.centerProfiles)
+          .where(eq(schema.centerProfiles.id, 1))
+          .get() ?? null;
+      const resolveBranding = (name: string | null | undefined): string | null => {
+        if (!name) return null;
+        if (name.includes("/") || name.includes("\\") || name.includes("..")) {
+          return null;
+        }
+        const full = path.join(uploadsPath, name);
+        return fs.existsSync(full) ? full : null;
+      };
+      const centerForPdf = center
+        ? {
+            ...center,
+            logoFile: resolveBranding(center.logoPath),
+            upiQrFile: resolveBranding(center.upiQrPath),
+          }
+        : null;
+
+      const previewInvoice = {
+        invoiceNo: "PREVIEW",
+        createdAt: new Date(),
+        subtotal,
+        taxTotal,
+        discount,
+        total,
+        paymentMode: data.paymentMode ?? "Cash",
+        status: data.status ?? "PENDING",
+        notes: data.notes ?? null,
+        customerNotes: data.customerNotes ?? null,
+        customer,
+        items: items.map((it) => ({
+          description: it.description,
+          qty: it.qty,
+          rate: it.rate,
+          taxRate: it.taxRate,
+          lineTotal: it.lineTotal,
+          service: null,
+        })),
+      };
+
+      // Write to OS temp dir under a deterministic basename so we don't pile
+      // up junk files. Each preview overwrites the previous one.
+      const tmpPath = path.join(os.tmpdir(), "csc-billing-preview.pdf");
+      await generateInvoicePdf(previewInvoice, centerForPdf, tmpPath);
+
+      // Open in the OS default PDF viewer. shell.openPath returns "" on
+      // success and an error string on failure.
+      const err = await shell.openPath(tmpPath);
+      if (err) {
+        throw new Error(`Could not open preview: ${err}`);
+      }
+      return { path: tmpPath };
+    }
+  );
 
   // Reports
   safeHandle(IPC.REPORTS_DAILY, { auth: "session", roles: ANY_AUTHED }, (_ctx, dateStr) => {

@@ -25,6 +25,7 @@ function NewInvoiceContent() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
   const [actionLoading, setActionLoading] = useState<"save" | "draft" | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const { state, actions } = useInvoiceState();
   const totals = useInvoiceTotals(state.lineItems, state.discount);
@@ -103,8 +104,24 @@ function NewInvoiceContent() {
     }
   };
 
-  const handlePreview = () => {
-    toast("PDF preview is not implemented yet", "info");
+  const handlePreview = async () => {
+    if (previewing) return;
+    setPreviewing(true);
+    try {
+      // Same payload shape as save — buildInvoicePayload throws if customer
+      // or line items are missing, so the preview gives the same validation
+      // feedback as save would.
+      const payload = buildInvoicePayload(state, "PENDING");
+      await ipc(IPC.INVOICES_PREVIEW_PDF, payload);
+      toast("Preview opened in your PDF viewer", "success");
+    } catch (err) {
+      toast(
+        err instanceof Error ? err.message : "Failed to generate preview",
+        "error"
+      );
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   useEffect(() => {

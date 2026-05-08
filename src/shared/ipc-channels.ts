@@ -59,6 +59,7 @@ export const IPC = {
   INVOICES_UPDATE_STATUS: "invoices:update-status",
   INVOICES_DELETE: "invoices:delete",
   INVOICES_GENERATE_PDF: "invoices:generate-pdf",
+  INVOICES_PREVIEW_PDF: "invoices:preview-pdf",
 
   // ── Printer ──────────────────────────────────────────────────────────────
   PRINTER_PRINT_RECEIPT: "printer:print-receipt",
