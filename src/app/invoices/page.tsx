@@ -25,7 +25,7 @@ import {
   ChevronDown,
   Download,
 } from "lucide-react";
-import { useAuth } from "@/lib/auth-context";
+import { useCanWrite } from "@/lib/permissions";
 
 const STATUS_OPTIONS = ["ALL", "PAID", "PENDING", "CANCELLED"] as const;
 
@@ -33,7 +33,7 @@ function InvoicesContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const canWrite = useCanWrite();
   
   const customerIdFilter = searchParams.get("customerId");
 
@@ -172,7 +172,7 @@ function InvoicesContent() {
             <Download className="h-4 w-4" />
             Export CSV
           </button>
-          {user?.role !== "viewer" && (
+          {canWrite && (
             <Link
               href="/billing/new"
               className={cn(
@@ -366,7 +366,7 @@ function InvoicesContent() {
                       <div className="relative inline-block">
                         <select
                           value={inv.status}
-                          disabled={user?.role === "viewer"}
+                          disabled={!canWrite}
                           onChange={(e) =>
                             updateStatus(
                               inv.id!,

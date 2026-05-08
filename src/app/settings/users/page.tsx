@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useCanAdmin } from "@/lib/permissions";
 import { User, UserRole } from "@/shared/types";
 import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 
 export default function UsersSettingsPage() {
   const { user: currentUser } = useAuth();
+  const isAdmin = useCanAdmin();
   const router = useRouter();
   const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
@@ -27,10 +29,10 @@ export default function UsersSettingsPage() {
 
   useEffect(() => {
     if (!currentUser) return;
-    if (currentUser.role !== "admin") {
+    if (!isAdmin) {
       router.replace("/");
     }
-  }, [currentUser, router]);
+  }, [currentUser, isAdmin, router]);
 
   const loadUsers = async () => {
     try {
@@ -57,7 +59,7 @@ export default function UsersSettingsPage() {
     }
   };
 
-  if (currentUser?.role !== "admin") {
+  if (!isAdmin) {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         <Lock className="h-8 w-8" />

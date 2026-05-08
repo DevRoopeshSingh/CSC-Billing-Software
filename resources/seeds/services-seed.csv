@@ -1,5 +1,5 @@
 name,category,subcategory,default_price,tax_rate,price_is_starting_from,sort_order,keywords,notes,is_active,is_bookmarked
-GST Registration,GST Services,Registration,200,0,false,10,gst gstin registration new,Govt fee extra if applicable,true,true
+GST Registration,GST Services,Registration,999,0,true,10,gst gstin registration new,Rs. 999 onwards; new GSTIN registration,true,true
 Monthly Return (Nil),GST Services,Returns,100,0,false,20,gst nil monthly return gstr3b,For traders with no transactions,true,false
 Return Filing (Regular),GST Services,Returns,199,0,true,30,gst monthly return gstr3b regular,Per return; rate varies by transaction count,true,true
 Annual Return (GSTR 9/9A),GST Services,Returns,1499,0,false,40,gst annual gstr9 gstr9a,Yearly filing,true,false
@@ -65,3 +65,137 @@ Scanning & Printing,Other Services,Print,10,0,true,50,scan print xerox photocopy
 Form Filling (General),Misc,Forms,50,0,true,10,form filling application generic,Generic form filling,true,true
 Photocopy (B&W),Misc,Print,2,0,false,20,xerox photocopy bw print,Per page B&W,true,true
 Color Printing,Misc,Print,10,0,true,30,color printing photo print,Per page color,true,false
+Aadhaar Update (Demographic),Aadhaar Services,Update,150,0,false,1010,aadhaar update demographic uidai address mobile email,Govt fee Rs. 50 included; UIDAI demographic update,true,true
+Aadhaar Update (Biometric),Aadhaar Services,Update,200,0,false,1020,aadhaar update biometric fingerprint iris uidai,Govt fee Rs. 100 included; fingerprint / iris,true,false
+Aadhaar Correction,Aadhaar Services,Correction,150,0,false,1030,aadhaar correction name dob address uidai,Govt fee Rs. 50 included; name / DOB / address,true,false
+Aadhaar Download / e-Aadhaar Print,Aadhaar Services,Print,30,0,false,1040,aadhaar download eaadhaar print color paper,With color print on Aadhaar paper,true,true
+Aadhaar - PAN Linking,Aadhaar Services,Linking,100,0,false,1050,aadhaar pan linking online,Online linking; late fee per Income Tax Dept may apply,true,false
+Aadhaar Link Status Check,Aadhaar Services,Linking,20,0,false,1060,aadhaar pan link status check,Quick linking status check,true,false
+New PAN Card,PAN Services,New,227,0,false,1110,pan new card nsdl utiitsl,Govt fee Rs. 107 included; NSDL / UTIITSL,true,true
+PAN Correction / Update,PAN Services,Correction,227,0,false,1120,pan correction update reissue,Govt fee Rs. 107 included; per correction,true,false
+Duplicate PAN Card,PAN Services,Duplicate,227,0,false,1130,pan duplicate lost damaged reprint,Govt fee Rs. 107 included; lost or damaged,true,false
+e-PAN Download,PAN Services,e-PAN,50,0,false,1140,epan download instant pan pdf,Instant e-PAN download,true,true
+PAN-Aadhaar Linking,PAN Services,Linking,100,0,false,1150,pan aadhaar linking nsdl,Late fee per Income Tax Dept may apply,true,false
+Voter ID - New / Correction / Update,ID & Certificate Services,Voter ID,100,0,false,1210,voter id epic form6 form8 election commission,Voter ID Form 6 / 8,true,true
+E-Shram Card New / Update,ID & Certificate Services,E-Shram,50,0,false,1220,eshram card unorganised worker scheme,Govt scheme; unorganised workers,true,false
+Birth Certificate Application,ID & Certificate Services,Birth,200,0,false,1230,birth certificate mbmc municipal application,Govt fee Rs. 50 included; per application,true,false
+Death Certificate Application,ID & Certificate Services,Death,200,0,false,1240,death certificate mbmc municipal application,Govt fee Rs. 50 included; per application,true,false
+Marriage Certificate Application,ID & Certificate Services,Marriage,600,0,false,1250,marriage certificate sub-registrar,Govt fee Rs. 100 included; per application,true,false
+Marriage Registration (full assistance),ID & Certificate Services,Marriage,999,0,true,1260,marriage registration sub-registrar witness stamp duty,Multi-visit; govt stamp duty as per rules,true,false
+Caste Certificate,ID & Certificate Services,Caste,150,0,true,1270,caste certificate maharashtra edistrict community,State-specific; govt fees as per rules,true,false
+Income Certificate,ID & Certificate Services,Income,150,0,true,1280,income certificate maharashtra edistrict salary,State-specific; govt fees as per rules,true,false
+Domicile / Residence Certificate,ID & Certificate Services,Domicile,150,0,true,1290,domicile residence certificate maharashtra edistrict,State-specific; govt fees as per rules,true,false
+Non-Creamy Layer Certificate,ID & Certificate Services,NCL,150,0,true,1300,non-creamy layer ncl obc certificate,OBC certificate; govt fees as per rules,true,false
+Police Clearance Certificate (PCC),ID & Certificate Services,PCC,300,0,true,1310,police clearance certificate pcc visa job verification,For visa or job; govt fees + verification visit,true,false
+"New Passport (36 pages, Normal)",Passport Services,New,1800,0,false,1410,passport new 36 pages normal psk 10 year,Govt fee Rs. 1500 included; 10-year validity,true,true
+"New Passport (60 pages, Normal)",Passport Services,New,2300,0,false,1420,passport new 60 pages normal psk frequent traveler,Govt fee Rs. 2000 included; frequent travelers,true,false
+New Passport - Tatkal,Passport Services,Tatkal,4000,0,false,1430,passport tatkal urgent psk fast,Govt fee Rs. 3500 included; 1-3 day delivery,true,false
+Passport Renewal,Passport Services,Renewal,1800,0,false,1440,passport renewal reissue psk,Govt fee Rs. 1500 included; standard renewal,true,false
+Minor Passport (under 18),Passport Services,Minor,1300,0,false,1450,passport minor child under 18 psk,Govt fee Rs. 1000 included; 5-year validity,true,false
+Police Verification Assistance,Passport Services,Verification,200,0,false,1460,police verification passport psk follow-up,Form filling + follow-up; per application,true,false
+Learner's License,RTO & Driving Services,Learner DL,200,0,true,1510,learner license dl 2w 4w commercial test,Plus RTO fee per category (2W / 4W / Commercial),true,true
+Driving License (Permanent),RTO & Driving Services,Permanent DL,300,0,true,1520,driving license permanent dl after learner,Plus RTO fee; after learner test cleared,true,false
+DL Renewal,RTO & Driving Services,Renewal,200,0,true,1530,dl renewal driving license,Plus RTO fee; late fee extra if applicable,true,false
+DL Correction / Duplicate,RTO & Driving Services,Correction,200,0,true,1540,dl correction duplicate lost,Plus RTO fee; per correction,true,false
+RC Transfer,RTO & Driving Services,RC,400,0,true,1550,rc transfer ownership form 29 30,Plus RTO fee; vehicle resale,true,false
+Duplicate RC,RTO & Driving Services,RC,300,0,true,1560,duplicate rc lost damaged reprint,Plus RTO fee; lost or damaged,true,false
+Address Change in RC,RTO & Driving Services,RC,300,0,true,1570,rc address change update,Plus RTO fee; per change,true,false
+Hypothecation Removal / Addition,RTO & Driving Services,Hypothecation,400,0,true,1580,hypothecation removal addition loan noc bank,Plus RTO fee; loan related; bank NOC may be required,true,false
+No Objection Certificate (NOC),RTO & Driving Services,NOC,300,0,true,1590,noc inter-state vehicle transfer rto,Plus RTO fee; inter-state transfer,true,false
+B&W Printing (1-49 pages),"Print, Scan & Photo Services",Printing,3,0,false,1610,bw black white printing per page,Per page; standard rate for 1-49 pages,true,true
+B&W Printing (50+ pages bulk),"Print, Scan & Photo Services",Printing,2,0,false,1620,bw black white printing bulk discount per page,Per page; bulk rate for 50+ pages,true,false
+Color Printing (text),"Print, Scan & Photo Services",Printing,15,0,false,1630,color printing text per page,Per page; text or document color print,true,false
+Color Printing (photo / heavy),"Print, Scan & Photo Services",Printing,20,0,false,1640,color printing photo heavy paper per page,Per page; photo paper / heavy color,true,false
+Document Scanning (B&W),"Print, Scan & Photo Services",Scanning,5,0,false,1650,scanning bw black white per page,Per page B&W scan,true,false
+Document Scanning (Color),"Print, Scan & Photo Services",Scanning,10,0,false,1660,scanning color per page,Per page color scan,true,false
+Lamination (A4),"Print, Scan & Photo Services",Lamination,30,0,false,1670,lamination a4 per piece,Per A4 piece,true,true
+Lamination (A3),"Print, Scan & Photo Services",Lamination,50,0,false,1680,lamination a3 per piece,Per A3 piece,true,false
+Lamination (ID size),"Print, Scan & Photo Services",Lamination,20,0,false,1690,lamination id card size per piece,Per ID-card size piece,true,false
+Spiral Binding,"Print, Scan & Photo Services",Binding,50,0,false,1700,spiral binding booklet,Per booklet,true,false
+File Conversion (PDF / Word / JPG),"Print, Scan & Photo Services",Conversion,30,0,false,1710,file conversion pdf word jpg docx convert,Per file,true,false
+Passport Size Photo (8 photos),"Print, Scan & Photo Services",Photo,50,0,false,1720,passport size photo 8 instant prints,Instant; 8 prints,true,true
+Passport Photo + Lamination,"Print, Scan & Photo Services",Photo,80,0,false,1730,passport photo lamination combo,Combo: 8 photos + 2 laminated,true,false
+Photo Resize / Edit,"Print, Scan & Photo Services",Photo,20,0,false,1740,photo resize edit crop,Per photo,true,false
+GST Monthly Return Filing,GST Services,Returns,500,0,true,1820,gst monthly return gstr1 gstr3b filing,"Per month per GSTIN; Rs. 500-1500 by complexity",true,true
+GST Annual Return (GSTR-9),GST Services,Returns,1500,0,true,1830,gst annual return gstr9 yearly,"Annual filing; Rs. 1500-3000 by turnover",true,false
+GST Cancellation / Surrender,GST Services,Closure,999,0,false,1840,gst cancellation surrender gstin closure,Per application,true,false
+ITR Filing - Salaried (ITR-1),Income Tax Services,ITR-1,500,0,true,1850,itr1 salaried form16 income tax,"Form 16 based; Rs. 500-799",true,true
+ITR Filing - Business / Professional,Income Tax Services,ITR-3-4,999,0,true,1860,itr3 itr4 business professional proprietor,"ITR-3 / ITR-4; Rs. 999-1999",true,false
+ITR Filing - Capital Gains / F&O,Income Tax Services,ITR-2,1499,0,true,1870,itr2 itr3 capital gains fno shares property,"ITR-2 / ITR-3; Rs. 1499-2999",true,false
+ITR Notice Reply / Scrutiny,Income Tax Services,Notices,1500,0,true,1880,itr notice reply scrutiny intimation 143,"Per notice; Rs. 1500-5000 by complexity",true,false
+TDS Return Filing (per quarter),Income Tax Services,TDS,999,0,false,1890,tds return form 24q 26q quarterly,Form 24Q / 26Q; per quarter,true,false
+Shop Act / Gumasta License,Registration Services,Shop Act,799,0,false,1900,shop act gumasta maharashtra license,Maharashtra mandatory for commercial establishments,true,false
+Shop Act Renewal,Registration Services,Shop Act,599,0,false,1910,shop act renewal annual gumasta,Annual,true,false
+Udyam / MSME Registration,Registration Services,MSME,599,0,false,1920,udyam msme registration ssi,Free govt registration; service charge for processing,true,false
+Professional Tax Registration,Registration Services,Professional Tax,799,0,false,1930,professional tax registration maharashtra ptec ptrc,Maharashtra,true,false
+Professional Tax Filing,Income Tax Services,Professional Tax,500,0,false,1940,professional tax filing maharashtra ptec ptrc,Per filing,true,false
+Company Registration (Pvt Ltd),Registration Services,Company,6999,0,true,1950,pvt ltd company registration roc mca incorporation,Rs. 6999 onwards; includes govt fees,true,false
+LLP Registration,Registration Services,LLP,4999,0,true,1960,llp limited liability partnership mca,Rs. 4999 onwards; includes govt fees,true,false
+Partnership Deed Drafting,Registration Services,Partnership,2999,0,true,1970,partnership firm deed drafting registration,Plus stamp duty,true,false
+Trademark Filing (TM),Business & Legal Services,Trademark,6999,0,false,1980,trademark tm filing brand class registration,Includes govt fees,true,false
+FSSAI Basic License,Registration Services,FSSAI,999,0,false,1990,fssai basic license food safety registration,By turnover; basic registration,true,false
+FSSAI State License,Registration Services,FSSAI,2999,0,false,2000,fssai state license food safety registration,By turnover; state license,true,false
+Import Export Code (IEC),Business & Legal Services,IEC,1999,0,false,2010,iec import export code dgft,DGFT registration,true,false
+12A / 80G Registration (NGO),Business & Legal Services,NGO,9999,0,false,2020,12a 80g ngo trust society registration,Trust / Society NGO registration,true,false
+Affidavit Typing + Print,Business & Legal Services,Affidavit,200,0,false,2110,affidavit typing print drafting,Plus stamp paper,true,false
+Notary Coordination,Business & Legal Services,Notary,500,0,false,2120,notary coordination stamping affidavit,Plus notary fee,true,false
+Rent Agreement Drafting + Print,Business & Legal Services,Rent Agreement,999,0,false,2130,rent agreement drafting print stamp duty registration,Plus stamp duty / registration; over 11 months requires Sub-Registrar,true,true
+Stamp Paper Procurement,Business & Legal Services,Stamp Paper,50,0,true,2140,stamp paper procurement denomination,Plus govt stamp denomination as per requirement,true,false
+Court Fee Stamp,Business & Legal Services,Court Fee,0,0,true,2150,court fee stamp government,Pass-through; collect govt rate from customer (no service fee),true,false
+RTI Application Filing,Business & Legal Services,RTI,100,0,false,2160,rti right to information application filing,Plus Rs. 10 govt fee; reply within 30 days per RTI Act,true,false
+Power of Attorney Draft,Business & Legal Services,POA,500,0,false,2170,power of attorney poa drafting,Plus stamp duty / registration,true,false
+Indemnity Bond Draft,Business & Legal Services,Indemnity,300,0,false,2180,indemnity bond drafting,Plus stamp paper,true,false
+Electricity / Water / Gas / Cable Bill,Payment & Banking Services,Bills,20,0,false,2210,bill payment electricity water gas cable,Per bill,true,true
+Mobile / DTH Recharge,Payment & Banking Services,Recharge,10,0,false,2220,recharge mobile dth prepaid,Per recharge,true,true
+Loan EMI Payment,Payment & Banking Services,Bills,20,0,false,2230,loan emi payment installment,Per payment,true,false
+Challan Payment (traffic / govt),Payment & Banking Services,Challan,30,0,false,2240,challan traffic government payment fine,Per challan,true,false
+Cash Deposit / Withdrawal (AEPS),Payment & Banking Services,AEPS,10,0,true,2250,aeps cash deposit withdrawal aadhaar fingerprint,"Per transaction; Rs. 10-50 by amount",true,false
+Money Transfer (DMT),Payment & Banking Services,DMT,10,0,true,2260,dmt domestic money transfer imps neft,"Per transfer; Rs. 10-50 by amount; Aadhaar required for sender; RBI per-day limits",true,false
+FASTag Recharge,Payment & Banking Services,FASTag,20,0,false,2270,fastag recharge top-up,Per recharge,true,false
+FASTag New Issue,Payment & Banking Services,FASTag,150,0,false,2280,fastag new issue setup wallet,One-time setup; wallet balance separate,true,false
+UAN Activation,EPFO & Pension Services,UAN,100,0,false,2310,uan activation epfo first time,First-time UAN activation,true,false
+PF Balance Check,EPFO & Pension Services,PF,20,0,false,2320,pf balance check epfo,Per check,true,false
+PF Withdrawal Claim,EPFO & Pension Services,PF,300,0,false,2330,pf withdrawal claim form 19 31,Per claim,true,false
+PF Transfer Claim,EPFO & Pension Services,PF,300,0,false,2340,pf transfer claim form 13,Per transfer,true,false
+EPFO KYC Update,EPFO & Pension Services,KYC,100,0,false,2350,epfo kyc update aadhaar pan bank,Per update,true,false
+NPS Registration,EPFO & Pension Services,NPS,100,0,false,2360,nps national pension scheme registration,Per service,true,false
+NPS Contribution,EPFO & Pension Services,NPS,50,0,false,2370,nps national pension scheme contribution,Per contribution,true,false
+Pension Registration,EPFO & Pension Services,Pension,100,0,true,2380,pension registration scheme,Various schemes,true,false
+Life Insurance Assistance,Insurance Services,Life,200,0,true,2410,life insurance application policy assistance,Plus insurer commission,true,false
+Health Insurance Assistance,Insurance Services,Health,200,0,true,2420,health insurance mediclaim policy assistance,Plus insurer commission,true,false
+Vehicle Insurance (4W) Renewal,Insurance Services,Vehicle,150,0,true,2430,4 wheeler vehicle insurance car renewal,Plus insurer commission,true,false
+Two-Wheeler Insurance,Insurance Services,Vehicle,150,0,true,2440,two wheeler bike 2w insurance,Plus insurer commission,true,false
+Travel Insurance,Insurance Services,Travel,200,0,true,2450,travel insurance overseas trip,Plus insurer commission,true,false
+Insurance Claim Support,Insurance Services,Claim,500,0,false,2460,insurance claim support documentation follow-up,Per claim regardless of outcome,true,false
+Claim Documentation Help,Insurance Services,Claim,300,0,false,2470,claim documentation forms photos upload,Per case,true,false
+Train Ticket - Sleeper,Travel & Railway Services,Train,40,0,true,2510,train ticket sleeper irctc booking eticket,Plus IRCTC fare; per ticket,true,true
+Train Ticket - AC 3T / 2T,Travel & Railway Services,Train,75,0,true,2520,train ticket ac 3t 2t irctc booking eticket,Plus IRCTC fare; per ticket,true,false
+Train Ticket - Tatkal,Travel & Railway Services,Train,150,0,true,2530,train ticket tatkal irctc urgent eticket,Plus IRCTC fare; per ticket,true,false
+PNR Status / Train Enquiry,Travel & Railway Services,Train,10,0,false,2540,pnr status train enquiry check,Per check,true,false
+Bus Booking,Travel & Railway Services,Bus,50,0,false,2550,bus booking ticket,Per booking,true,false
+Hotel Booking,Travel & Railway Services,Hotel,100,0,true,2560,hotel booking room reservation,"Per booking; Rs. 100-300 by complexity",true,false
+Flight Ticket Booking,Travel & Railway Services,Flight,200,0,true,2570,flight ticket air booking,"Per ticket; Rs. 200-500 by complexity",true,false
+Cancellation / Refund Help,Travel & Railway Services,Cancel,50,0,true,2580,cancellation refund ticket help irctc,Per request; refund as per operator rules,true,false
+Scholarship Form Fill (NSP / State),Education & Scholarship Services,Scholarship,100,0,false,2610,scholarship nsp national portal state form fill,Per application,true,true
+Scholarship Status Check,Education & Scholarship Services,Scholarship,20,0,false,2620,scholarship status nsp check,Per check,true,false
+Scholarship Document Upload,Education & Scholarship Services,Scholarship,50,0,false,2630,scholarship document upload nsp,Per service,true,false
+Admit Card / Result / Marksheet Print,Education & Scholarship Services,Print,20,0,false,2640,admit card result marksheet print exam,Per copy,true,false
+Online Form Filling (any govt exam),Education & Scholarship Services,Forms,50,0,true,2650,online form filling government exam application,"Per form; Rs. 50-150 by complexity",true,false
+College / University Admission Form,Education & Scholarship Services,Forms,100,0,true,2660,college university admission form fill,"Per form; Rs. 100-300 by college",true,false
+Resume Design + 5 Prints (combo),Education & Scholarship Services,Resume,299,0,false,2670,resume design cv prints combo,Combo offer; design plus 5 prints,true,false
+PM Kisan Registration,Government Schemes,PM Kisan,50,0,false,2710,pm kisan farmer scheme registration,Farmer scheme; per registration,true,false
+PM Kisan Status Check,Government Schemes,PM Kisan,20,0,false,2720,pm kisan farmer status check,Per check,true,false
+PMAY (Awas Yojana),Government Schemes,PMAY,50,0,false,2730,pmay awas yojana housing scheme,Housing scheme application,true,false
+Ayushman Card New,Government Schemes,Ayushman,50,0,false,2740,ayushman pmjay card new application,PM-JAY new application,true,false
+Ayushman Card Download,Government Schemes,Ayushman,30,0,false,2750,ayushman pmjay card download ecard,PM-JAY e-card download,true,false
+Ayushman Card Status Check,Government Schemes,Ayushman,20,0,false,2760,ayushman pmjay card status check,Per check,true,false
+Ration Card New / Correction,Government Schemes,Ration,50,0,false,2770,ration card new correction food,Per service,true,false
+CEC (Common Enrolment Centre),Government Schemes,CEC,50,0,false,2780,cec common enrolment centre,Per enrolment,true,false
+Govt Scheme Application (any),Government Schemes,Generic,100,0,true,2790,government scheme application generic any,Per application; varies by scheme,true,false
+E-District / Citizen Portal Service,Government Schemes,E-District,100,0,true,2800,edistrict citizen portal maharashtra service,Per request; varies by service type,true,false
+New Business Starter Pack,Combo Bundles,Bundle,2999,0,false,2910,new business starter pack gst shop act udyam dsc bundle,Bundle: GST Registration + Shop Act + Udyam + DSC. Save Rs. 500 vs individual.,true,true
+Tax Saver Pack,Combo Bundles,Bundle,699,0,false,2920,tax saver pack itr pan aadhaar link bundle,Bundle: ITR Filing + PAN Update + Aadhaar Link. Save Rs. 150.,true,true
+Job Seeker Pack,Combo Bundles,Bundle,299,0,false,2930,job seeker pack resume prints photos lamination bundle,Bundle: Resume Design + 5 Prints + 8 Photos + Lamination.,true,true
+Wedding Documentation Pack,Combo Bundles,Bundle,999,0,false,2940,wedding documentation pack marriage registration photos certified copies lamination bundle,Bundle: Marriage Registration + 16 Photos + Certified Copies + Lamination.,true,false
+Vehicle Pack,Combo Bundles,Bundle,0,0,true,2950,vehicle pack rc transfer insurance photos lamination bundle,TBD: bundle price missing in source charge sheet (PDF reads 'Save Rs. 200' only). Confirm with admin before quoting. Includes: RC Transfer + Insurance + 2 Photos + Lamination.,false,false
+Senior Citizen Pack,Combo Bundles,Bundle,399,0,false,2960,senior citizen pack aadhaar pension bank doc bundle,Bundle: Aadhaar Update + Pension Reg + Bank Doc Help.,true,false

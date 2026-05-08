@@ -19,7 +19,7 @@ import {
   Trash2,
   FileText,
 } from "lucide-react";
-import { useAuth } from "@/lib/auth-context";
+import { useCanWrite } from "@/lib/permissions";
 import { PinPromptModal } from "@/components/auth/PinPromptModal";
 
 type FormState = {
@@ -66,7 +66,7 @@ export default function CustomersPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showPinModal, setShowPinModal] = useState(false);
-  const { user } = useAuth();
+  const canWrite = useCanWrite();
 
   const loadCustomers = useCallback(
     async (q: string) => {
@@ -179,7 +179,7 @@ export default function CustomersPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          {user?.role !== "viewer" && (
+          {canWrite && (
             <Link
               href="/billing/new"
               className={cn(
@@ -190,7 +190,7 @@ export default function CustomersPage() {
               New Invoice
             </Link>
           )}
-          {user?.role !== "viewer" && (
+          {canWrite && (
             <button
               onClick={openAdd}
               className={cn(
@@ -335,7 +335,7 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1.5">
-                        {user?.role !== "viewer" && (
+                        {canWrite && (
                           <>
                             <Link
                               href={`/billing/new?customerId=${c.id}`}

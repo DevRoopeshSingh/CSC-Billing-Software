@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { useCanWrite } from "@/lib/permissions";
 import { SidebarProvider, useSidebar } from "@/lib/sidebar-context";
 import { ThemeProvider, useTheme } from "@/lib/theme-context";
 import { LoginScreen } from "@/components/auth/LoginScreen";
@@ -245,6 +246,7 @@ function TopBar() {
   const pathname = usePathname();
   const [dateStr, setDateStr] = useState("");
   const { user, logout } = useAuth();
+  const canWrite = useCanWrite();
   const { toggleSidebar } = useSidebar();
 
   useEffect(() => {
@@ -316,7 +318,7 @@ function TopBar() {
         </button>
 
         {/* New Invoice CTA */}
-        {user?.role !== "viewer" && (
+        {canWrite && (
           <Link
             href="/billing/new"
             className={cn(

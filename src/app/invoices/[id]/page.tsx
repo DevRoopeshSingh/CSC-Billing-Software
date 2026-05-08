@@ -33,7 +33,7 @@ import {
   FileText,
   Building2,
 } from "lucide-react";
-import { useAuth } from "@/lib/auth-context";
+import { useCanWrite } from "@/lib/permissions";
 import { PinPromptModal } from "@/components/auth/PinPromptModal";
 
 const STATUS_CLASSES: Record<InvoiceStatus, string> = {
@@ -46,7 +46,7 @@ export default function InvoiceDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const canWrite = useCanWrite();
 
   const invoiceId = useMemo(() => {
     const n = Number(params?.id);
@@ -252,7 +252,6 @@ export default function InvoiceDetailPage() {
     "text-[13px] font-medium transition-colors disabled:opacity-60"
   );
 
-  const isViewer = user?.role === "viewer";
 
   return (
     <div className="space-y-6">
@@ -285,7 +284,7 @@ export default function InvoiceDetailPage() {
           <div className="relative">
             <select
               value={invoice.status}
-              disabled={busy === "status" || isViewer}
+              disabled={busy === "status" || !canWrite}
               onChange={(e) => onStatusChange(e.target.value as InvoiceStatus)}
               className={cn(
                 "h-9 appearance-none rounded-lg border px-3 pr-8 text-xs font-semibold",
@@ -300,7 +299,7 @@ export default function InvoiceDetailPage() {
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2" />
           </div>
 
-          {invoice.status === "PENDING" && !isViewer && (
+          {invoice.status === "PENDING" && canWrite && (
             <Link
               href={`/invoices/${invoice.id}/edit`}
               className={cn(
@@ -347,7 +346,7 @@ export default function InvoiceDetailPage() {
             Print
           </button>
 
-          {!isViewer && (
+          {canWrite && (
             <button
               type="button"
               onClick={onDelete}

@@ -227,15 +227,21 @@ export async function generateInvoicePdf(
   // label + meta block. Both columns share a fixed top edge so they always
   // baseline-align.
   const headerTop = height - marginY;
-  const LOGO_BOX = 56; // square box reserved for the logo
-  const logoSize = logoImg ? fitImage(logoImg, LOGO_BOX, LOGO_BOX) : null;
+
+  // Logo box is rectangular (wider than tall) so wordmark / horizontal logos
+  // don't get squashed. fitImage preserves aspect ratio, so a square logo
+  // simply lands at LOGO_BOX_H × LOGO_BOX_H within this box.
+  const LOGO_BOX_W = 110;
+  const LOGO_BOX_H = 56;
+  const logoSize = logoImg ? fitImage(logoImg, LOGO_BOX_W, LOGO_BOX_H) : null;
   const logoW = logoSize?.width ?? 0;
+  const logoH = logoSize?.height ?? 0;
   const logoGap = logoImg ? 14 : 0;
 
   if (logoImg && logoSize) {
     page.drawImage(logoImg, {
       x: marginX,
-      y: headerTop - logoSize.height,
+      y: headerTop - logoH,
       width: logoSize.width,
       height: logoSize.height,
     });
@@ -263,9 +269,15 @@ export async function generateInvoicePdf(
       ? clipToWidth(centerName, bold, centerNameSize, centerNameMaxW)
       : centerName;
 
-  // Top-line baseline: place center name so its visual top aligns with the
-  // logo top. pdf-lib draws text from the baseline, so subtract size.
-  const nameBaseline = headerTop - centerNameSize;
+  // Vertically center the name against the logo midline. Helvetica's
+  // cap-height is ~0.72 × fontSize; we offset the baseline so the visual
+  // midline of the cap height lands on the logo's vertical center.
+  // Without a logo, fall back to the previous top-aligned position.
+  const NAME_CAP_RATIO = 0.72;
+  const nameCapH = centerNameSize * NAME_CAP_RATIO;
+  const nameBaseline = logoImg
+    ? headerTop - logoH / 2 - nameCapH / 2
+    : headerTop - centerNameSize;
   page.drawText(centerNameDrawn, {
     x: leftTextX,
     y: nameBaseline,
@@ -330,8 +342,10 @@ export async function generateInvoicePdf(
     metaY -= 12;
   }
 
-  // The cursor drops to the lower of the two columns plus the logo bottom.
-  const logoBottom = logoImg && logoSize ? headerTop - logoSize.height : headerTop;
+  // The cursor drops to the lowest of the three: address column, meta block,
+  // or logo bottom. This guarantees nothing in the next section overlaps the
+  // header regardless of which is tallest.
+  const logoBottom = logoImg ? headerTop - logoH : headerTop;
   let y = Math.min(leftY, metaY, logoBottom) - 10;
   page.drawLine({
     start: { x: marginX, y },
@@ -379,12 +393,18 @@ export async function generateInvoicePdf(
   y -= 22;
 
   // ── Items table ─────────────────────────────────────────────────────────
+  // Column right-edges chosen so each numeric column has enough room for the
+  // largest realistic value at 10pt Helvetica:
+  //   QTY    "999"           (≈18pt) — col width 50pt
+  //   RATE   "Rs. 99999.00"  (≈74pt) — col width 76pt
+  //   TAX%   "100.00%"       (≈35pt) — col width 56pt
+  //   AMOUNT "Rs. 999999.00" (≈80pt) — col width 85pt  ← was 55pt, overflowed
   const COL = {
     descX: marginX,
-    descMaxW: 240,
-    qtyRight: marginX + 300,
-    rateRight: marginX + 384,
-    taxRight: marginX + 444,
+    descMaxW: 232,
+    qtyRight: marginX + 280,
+    rateRight: marginX + 358,
+    taxRight: marginX + 414,
     totalRight: width - marginX,
   };
 
@@ -468,10 +488,17 @@ export async function generateInvoicePdf(
       descY -= 12;
     }
 
+    // Defensive width caps — should never trigger for realistic CSC pricing,
+    // but guarantee no numeric cell can ever overlap its neighbour.
+    const amountMaxW = COL.totalRight - COL.taxRight - 6;
+    const rateMaxW = COL.rateRight - COL.qtyRight - 6;
     drawRowRight(String(item.qty), COL.qtyRight);
-    drawRowRight(money(item.rate), COL.rateRight);
+    drawRowRight(clipToWidth(money(item.rate), font, 10, rateMaxW), COL.rateRight);
     drawRowRight(`${item.taxRate.toFixed(2)}%`, COL.taxRight);
-    drawRowRight(money(item.lineTotal), COL.totalRight);
+    drawRowRight(
+      clipToWidth(money(item.lineTotal), font, 10, amountMaxW),
+      COL.totalRight
+    );
 
     y -= rowH;
     page.drawLine({

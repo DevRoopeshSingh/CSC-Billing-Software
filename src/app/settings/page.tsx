@@ -8,6 +8,7 @@ import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/lib/auth-context";
+import { useCanAdmin } from "@/lib/permissions";
 import {
   ALLOWED_BRANDING_MIME,
   MAX_BRANDING_ASSET_BYTES,
@@ -264,17 +265,17 @@ export default function SettingsPage() {
   const qrInputRef = useRef<HTMLInputElement>(null);
 
   const [testingPrinter, setTestingPrinter] = useState(false);
-  const isAdmin = user?.role === "admin";
+  const isAdmin = useCanAdmin();
 
   // Page-level guard: viewer/staff cannot manage settings. Backend enforces
   // it too; this just keeps the URL from rendering a confusing "saving fails"
   // experience.
   useEffect(() => {
     if (!user) return;
-    if (user.role !== "admin") {
+    if (!isAdmin) {
       router.replace("/");
     }
-  }, [user, router]);
+  }, [user, isAdmin, router]);
 
   const set = <K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));

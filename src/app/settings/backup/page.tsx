@@ -9,6 +9,7 @@ import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/lib/auth-context";
+import { useCanAdmin } from "@/lib/permissions";
 import type { CenterProfile } from "@/shared/types";
 import {
   HardDrive,
@@ -26,6 +27,7 @@ import { PinPromptModal } from "@/components/auth/PinPromptModal";
 export default function BackupPage() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const isAdmin = useCanAdmin();
   const router = useRouter();
   const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null);
   const [loadingDate, setLoadingDate] = useState(true);
@@ -54,12 +56,12 @@ export default function BackupPage() {
 
   useEffect(() => {
     if (!user) return;
-    if (user.role !== "admin") {
+    if (!isAdmin) {
       router.replace("/");
     }
-  }, [user, router]);
+  }, [user, isAdmin, router]);
 
-  if (user && user.role !== "admin") {
+  if (user && !isAdmin) {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         <Lock className="h-8 w-8" />

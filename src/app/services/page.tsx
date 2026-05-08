@@ -30,12 +30,12 @@ import {
   Upload,
 } from "lucide-react";
 import type { ServicesImportResult } from "@/shared/types";
-import { useAuth } from "@/lib/auth-context";
+import { useCanWrite } from "@/lib/permissions";
 import { PinPromptModal } from "@/components/auth/PinPromptModal";
 
 export default function ServicesPage() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const canWrite = useCanWrite();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -375,7 +375,7 @@ export default function ServicesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {user?.role !== "viewer" && (
+          {canWrite && (
             <>
               <button
                 type="button"
@@ -405,7 +405,7 @@ export default function ServicesPage() {
             <Download className="h-3.5 w-3.5" />
             Export CSV
           </button>
-          {user?.role !== "viewer" && (
+          {canWrite && (
             <button
               type="button"
               onClick={() => {
@@ -454,7 +454,7 @@ export default function ServicesPage() {
             </span>
           </div>
 
-          {user?.role !== "viewer" && (
+          {canWrite && (
             <BulkActionsBar
               selectedCount={selection.size}
               busy={bulkBusy}
@@ -539,7 +539,7 @@ export default function ServicesPage() {
                 setEditorOpen(true);
               }}
               onDelete={handleDelete}
-              readOnly={user?.role === "viewer"}
+              readOnly={!canWrite}
             />
           )}
         </div>

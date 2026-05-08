@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { useToast } from "@/components/Toast";
-import { useAuth } from "@/lib/auth-context";
+import { useCanWrite } from "@/lib/permissions";
 import type { Service, Customer, CenterProfile } from "@/shared/types";
 import { InvoiceFormUI } from "@/components/billing/InvoiceFormUI";
 import {
@@ -19,7 +19,7 @@ function NewInvoiceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const canWrite = useCanWrite();
 
   const [services, setServices] = useState<Service[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -108,10 +108,10 @@ function NewInvoiceContent() {
   };
 
   useEffect(() => {
-    if (user?.role === "viewer") router.replace("/invoices");
-  }, [user, router]);
+    if (!canWrite) router.replace("/invoices");
+  }, [canWrite, router]);
 
-  if (user?.role === "viewer") {
+  if (!canWrite) {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         <Lock className="h-8 w-8" />

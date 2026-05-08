@@ -1,6 +1,7 @@
 // CSC service catalogue taxonomy.
-// Locked list — derived from the printed services poster. Add a category here
-// only when the business itself adds a new section, not for one-off services.
+// Locked list — derived from the printed services poster + the operator
+// charge sheet. Add a category here only when the business itself adds a
+// new section, not for one-off services.
 export const SERVICE_CATEGORIES = [
   "GST Services",
   "Income Tax Services",
@@ -13,6 +14,20 @@ export const SERVICE_CATEGORIES = [
   "Website & Digital Marketing",
   "Other Services",
   "Misc",
+  // ── Charge-sheet sections (operator-facing groupings) ──
+  "Aadhaar Services",
+  "PAN Services",
+  "ID & Certificate Services",
+  "Passport Services",
+  "RTO & Driving Services",
+  "Print, Scan & Photo Services",
+  "Payment & Banking Services",
+  "EPFO & Pension Services",
+  "Insurance Services",
+  "Travel & Railway Services",
+  "Education & Scholarship Services",
+  "Government Schemes",
+  "Combo Bundles",
 ] as const;
 
 export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
