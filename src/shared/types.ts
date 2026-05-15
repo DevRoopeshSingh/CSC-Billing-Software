@@ -369,7 +369,38 @@ export interface BulkDeleteServicesResult {
   skippedInUse: number[];
 }
 
+// ─── Bulk mark invoices as paid ──────────────────────────────────────────────
+export const bulkMarkPaidSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(500),
+  paymentMode: z.enum(["Cash", "UPI", "Card", "Other"]).default("Cash"),
+});
+export type BulkMarkPaidRequest = z.infer<typeof bulkMarkPaidSchema>;
+export interface BulkMarkPaidResult {
+  updated: number;
+}
+
 // ─── Lead ────────────────────────────────────────────────────────────────────
+export const leadCreateSchema = z.object({
+  name: z.string().min(1),
+  mobile: z.string().default(""),
+  email: z.string().email().or(z.literal("")).default(""),
+  serviceInterest: z.string().default(""),
+  source: z.string().default("manual"),
+  notes: z.string().nullable().default(null),
+});
+export type LeadCreateRequest = z.infer<typeof leadCreateSchema>;
+
+export const leadUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  mobile: z.string().optional(),
+  email: z.string().email().or(z.literal("")).optional(),
+  serviceInterest: z.string().optional(),
+  source: z.string().optional(),
+  status: LeadStatus.optional(),
+  notes: z.string().nullable().optional(),
+});
+export type LeadUpdateRequest = z.infer<typeof leadUpdateSchema>;
+
 export const leadSchema = z.object({
   id: z.number().int().positive().optional(),
   name: z.string().min(1),

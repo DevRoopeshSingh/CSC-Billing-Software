@@ -4,8 +4,8 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { ipc, IpcError } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import type { Customer } from "@/shared/types";
 import {
@@ -72,14 +72,15 @@ export default function CustomersPage() {
     async (q: string) => {
       setLoading(true);
       try {
-        const list = await ipc<Customer[]>(
-          q ? IPC.CUSTOMERS_SEARCH : IPC.CUSTOMERS_LIST,
-          q || undefined
-        );
+        const list = q
+          ? await api.get<Customer[]>(
+              `${API.CUSTOMERS_SEARCH}?q=${encodeURIComponent(q)}`
+            )
+          : await api.get<Customer[]>(API.CUSTOMERS);
         setCustomers(list ?? []);
       } catch (err) {
         toast(
-          err instanceof IpcError ? err.message : "Failed to load customers",
+          err instanceof ApiError ? err.message : "Failed to load customers",
           "error"
         );
       } finally {
@@ -123,17 +124,17 @@ export default function CustomersPage() {
         tags: form.tags.trim(),
       };
       if (modal.mode === "add") {
-        await ipc(IPC.CUSTOMERS_CREATE, payload);
+        await api.post(API.CUSTOMERS, payload);
         toast("Customer added", "success");
-      } else {
-        await ipc(IPC.CUSTOMERS_UPDATE, modal.customer.id, payload);
+      } else if (modal.customer.id) {
+        await api.patch(API.CUSTOMER(modal.customer.id), payload);
         toast("Customer updated", "success");
       }
       closeModal();
       loadCustomers(search);
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to save customer",
+        err instanceof ApiError ? err.message : "Failed to save customer",
         "error"
       );
     } finally {
@@ -157,7 +158,9 @@ export default function CustomersPage() {
   const confirmDelete = async (pin: string) => {
     if (!deletingId) return;
     try {
-      await ipc(IPC.CUSTOMERS_DELETE, deletingId, pin);
+      await api.delete(API.CUSTOMER(deletingId), {
+        headers: { "x-admin-pin": pin },
+      });
       toast("Customer deleted", "success");
       loadCustomers(search);
       setDeletingId(null);
@@ -165,7 +168,7 @@ export default function CustomersPage() {
     } catch (err) {
       // Re-throw so PinPromptModal can show the error and let the user
       // retry without dismissing.
-      throw err instanceof IpcError ? err : new Error("Failed to delete customer");
+      throw err instanceof ApiError ? err : new Error("Failed to delete customer");
     }
   };
 

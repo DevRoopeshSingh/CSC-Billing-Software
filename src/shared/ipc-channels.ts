@@ -57,6 +57,7 @@ export const IPC = {
   INVOICES_CREATE: "invoices:create",
   INVOICES_UPDATE: "invoices:update",
   INVOICES_UPDATE_STATUS: "invoices:update-status",
+  INVOICES_BULK_MARK_PAID: "invoices:bulk-mark-paid",
   INVOICES_DELETE: "invoices:delete",
   INVOICES_GENERATE_PDF: "invoices:generate-pdf",
   INVOICES_PREVIEW_PDF: "invoices:preview-pdf",
@@ -79,6 +80,18 @@ export const IPC = {
   REPORTS_TOP_CUSTOMERS: "reports:top-customers",
   REPORTS_TOP_SERVICES: "reports:top-services",
   REPORTS_PENDING_DUES: "reports:pending-dues",
+
+  // ── Leads ─────────────────────────────────────────────────────────────────
+  LEADS_LIST: "leads:list",
+  LEADS_GET: "leads:get",
+  LEADS_CREATE: "leads:create",
+  LEADS_UPDATE: "leads:update",
+  LEADS_DELETE: "leads:delete",
+  LEADS_CONVERT: "leads:convert",
+
+  // ── Message Templates ─────────────────────────────────────────────────────
+  MESSAGE_TEMPLATES_LIST: "message-templates:list",
+  MESSAGE_TEMPLATES_UPSERT: "message-templates:upsert",
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

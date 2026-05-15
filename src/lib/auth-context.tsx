@@ -8,24 +8,17 @@ import React, {
   useCallback,
 } from "react";
 import { LoginRequest, SetupRequest, UserRole } from "@/shared/types";
-import { ipc, IpcError, TOKEN_STORAGE_KEY } from "./ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "./api-client";
+import { API } from "./api-routes";
 
-// The renderer never holds a full user record across reloads. It holds an
-// opaque session token; the canonical user (id, username, role) is fetched
-// from the main process on boot via USERS_RESUME_SESSION. This means that
-// editing localStorage cannot grant a role: the main process re-derives
-// everything from the DB.
+// The renderer never holds a session token. The HttpOnly `csc_session` cookie
+// does, and the server re-derives the canonical user (id, username, role) on
+// every /api/auth/session call. Editing client state cannot grant a role.
 
 interface SessionUser {
   id: number;
   username: string;
   role: UserRole;
-}
-
-interface AuthLoginResponse {
-  token: string;
-  user: SessionUser;
 }
 
 interface AuthContextType {
@@ -40,25 +33,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function readToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeToken(token: string | null): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (token) window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-  } catch {
-    // Storage may be unavailable (private mode, quota); fall through.
-  }
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,24 +40,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkInitialState = useCallback(async () => {
     try {
-      const firstRun = await ipc<boolean>(IPC.USERS_CHECK_FIRST_RUN);
+      const firstRun = await api.get<boolean>(API.AUTH_CHECK_FIRST_RUN);
       setIsFirstRun(firstRun);
 
       if (!firstRun) {
-        const token = readToken();
-        if (token) {
-          // Resume returns the canonical user record from the DB, or null if
-          // the token is unknown / expired / belongs to a disabled user.
-          const me = await ipc<SessionUser | null>(
-            IPC.USERS_RESUME_SESSION,
-            token
-          );
-          if (me) {
-            setUser(me);
-          } else {
-            writeToken(null);
-          }
-        }
+        const me = await api.get<{ user: SessionUser | null }>(
+          API.AUTH_SESSION
+        );
+        setUser(me.user);
       }
     } catch (err) {
       console.error("Failed to check auth state:", err);
@@ -98,58 +62,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (credentials: LoginRequest) => {
     try {
-      const res = await ipc<AuthLoginResponse>(IPC.USERS_LOGIN, credentials);
-      writeToken(res.token);
+      const res = await api.post<{ user: SessionUser }>(
+        API.AUTH_LOGIN,
+        credentials
+      );
       setUser(res.user);
     } catch (err) {
-      if (err instanceof IpcError) throw err;
+      if (err instanceof ApiError) throw err;
       throw new Error("Login failed");
     }
   };
 
   const logout = async () => {
-    const token = readToken();
-    if (token) {
-      try {
-        await ipc(IPC.USERS_LOGOUT, token);
-      } catch {
-        // Ignore — we're tearing down anyway.
-      }
+    try {
+      await api.post(API.AUTH_LOGOUT);
+    } catch {
+      // Ignore — cookie wipe is server-side and we're tearing down anyway.
     }
-    writeToken(null);
     setUser(null);
   };
 
   const setupAdmin = async (data: SetupRequest) => {
     try {
-      const res = await ipc<AuthLoginResponse>(IPC.USERS_SETUP_ADMIN, data);
-      writeToken(res.token);
+      const res = await api.post<{ user: SessionUser }>(API.AUTH_SETUP, data);
       setUser(res.user);
       setIsFirstRun(false);
     } catch (err) {
-      if (err instanceof IpcError) throw err;
+      if (err instanceof ApiError) throw err;
       throw new Error("Setup failed");
     }
   };
 
   const refreshUser = useCallback(async () => {
-    const token = readToken();
-    if (!token) {
-      setUser(null);
-      return;
-    }
     try {
-      const me = await ipc<SessionUser | null>(
-        IPC.USERS_RESUME_SESSION,
-        token
-      );
-      if (me) setUser(me);
-      else {
-        writeToken(null);
-        setUser(null);
-      }
+      const me = await api.get<{ user: SessionUser | null }>(API.AUTH_SESSION);
+      setUser(me.user);
     } catch {
-      // Network/transport failure — leave existing state.
+      // Transport failure — leave existing state.
     }
   }, []);
 

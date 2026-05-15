@@ -17,7 +17,8 @@ import {
   FileText,
   type LucideIcon,
 } from "lucide-react";
-import { IPC } from "@/shared/ipc-channels";
+import { api } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 
 interface BookmarkedService {
   id: number;
@@ -63,15 +64,9 @@ export default function BookmarkedServices({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!window.ipc) {
-      setLoading(false);
-      return;
-    }
-    window.ipc
-      .invoke(IPC.SERVICES_GET_BOOKMARKED)
-      .then((data) =>
-        setServices(Array.isArray(data) ? (data as BookmarkedService[]) : [])
-      )
+    api
+      .get<BookmarkedService[]>(API.SERVICES_BOOKMARKED)
+      .then((data) => setServices(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

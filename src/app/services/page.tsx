@@ -4,8 +4,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { SERVICE_CATEGORIES } from "@/config/categories";
-import { ipc, IpcError, isBridgeMissingError } from "@/lib/ipc";
+// Two IPC call sites remain on this page (CENTER_GET + SERVICES_LOAD_SEED_CATALOGUE)
+// and will migrate when the settings slice / seed loader move to HTTP.
+import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import { buildCsv, downloadCsv } from "@/lib/csv";
 import type {
@@ -55,13 +59,11 @@ export default function ServicesPage() {
 
   const loadServices = useCallback(async () => {
     try {
-      const list = await ipc<Service[]>(IPC.SERVICES_LIST);
+      const list = await api.get<Service[]>(API.SERVICES);
       setServices(list ?? []);
     } catch (err) {
-      // Bridge missing is surfaced once via the global banner — don't toast.
-      if (isBridgeMissingError(err)) return;
       toast(
-        err instanceof IpcError ? err.message : "Failed to load services",
+        err instanceof ApiError ? err.message : "Failed to load services",
         "error"
       );
     }
@@ -166,14 +168,13 @@ export default function ServicesPage() {
         prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
       );
       try {
-        await ipc(IPC.SERVICES_UPDATE, id, patch);
+        await api.patch(API.SERVICE(id), patch);
       } catch (err) {
         setServices((prev) =>
           prev.map((s) => (s.id === id ? before : s))
         );
-        if (isBridgeMissingError(err)) return;
         toast(
-          err instanceof IpcError ? err.message : "Update failed",
+          err instanceof ApiError ? err.message : "Update failed",
           "error"
         );
       }
@@ -193,7 +194,7 @@ export default function ServicesPage() {
 
   const confirmDeleteOne = async (pin: string, id: number) => {
     try {
-      await ipc(IPC.SERVICES_DELETE, id, pin);
+      await api.delete(API.SERVICE(id), { headers: { "x-admin-pin": pin } });
       setSelection((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -203,7 +204,7 @@ export default function ServicesPage() {
       toast("Service deleted", "success");
       setPinModal(null);
     } catch (err) {
-      throw err instanceof IpcError
+      throw err instanceof ApiError
         ? err
         : new Error("Cannot delete — service is used in invoices");
     }
@@ -243,7 +244,7 @@ export default function ServicesPage() {
     if (ids.length === 0) return;
     setBulkBusy(true);
     try {
-      const r = await ipc<{ updated: number }>(IPC.SERVICES_BULK_UPDATE, {
+      const r = await api.post<{ updated: number }>(API.SERVICES_BULK_UPDATE, {
         ids,
         patch,
       });
@@ -251,7 +252,7 @@ export default function ServicesPage() {
       await loadServices();
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Bulk update failed",
+        err instanceof ApiError ? err.message : "Bulk update failed",
         "error"
       );
     } finally {
@@ -274,10 +275,10 @@ export default function ServicesPage() {
   const confirmBulkDelete = async (pin: string, ids: number[]) => {
     setBulkBusy(true);
     try {
-      const r = await ipc<BulkDeleteServicesResult>(
-        IPC.SERVICES_BULK_DELETE,
+      const r = await api.post<BulkDeleteServicesResult>(
+        API.SERVICES_BULK_DELETE,
         { ids },
-        pin
+        { headers: { "x-admin-pin": pin } }
       );
       // Remove only deleted ids from selection; leave skipped rows visible
       // and selected for clarity (guardrail #3).
@@ -299,7 +300,7 @@ export default function ServicesPage() {
       await loadServices();
       setPinModal(null);
     } catch (err) {
-      throw err instanceof IpcError ? err : new Error("Bulk delete failed");
+      throw err instanceof ApiError ? err : new Error("Bulk delete failed");
     } finally {
       setBulkBusy(false);
     }

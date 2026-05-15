@@ -26,11 +26,14 @@ import {
   servicesImportSchema,
   bulkUpdateServicesSchema,
   bulkDeleteServicesSchema,
+  bulkMarkPaidSchema,
   checklistUpsertBulkSchema,
   type ServicesImportSeedRow,
   type ServicesImportResult,
   type Service,
   type BulkDeleteServicesResult,
+  leadCreateSchema,
+  leadUpdateSchema,
   loginRequestSchema,
   setupRequestSchema,
   userUpdateSchema,
@@ -1858,6 +1861,44 @@ function registerIpcHandlers() {
       return { success: true };
     }
   );
+
+  // Bulk-mark a selection of invoices as PAID with a chosen payment mode.
+  // Staff+ can do this; it mirrors PAID↔PENDING single-invoice transitions.
+  safeHandle(
+    IPC.INVOICES_BULK_MARK_PAID,
+    { auth: "session", roles: STAFF_PLUS },
+    (ctx, raw) => {
+      const { ids, paymentMode } = parseArg(
+        bulkMarkPaidSchema,
+        raw,
+        "invoices:bulk-mark-paid"
+      );
+      const sqlite = getSqlite();
+      const tx = sqlite.transaction(() => {
+        let count = 0;
+        for (const id of ids) {
+          const r = db
+            .update(schema.invoices)
+            .set({
+              status: "PAID",
+              paymentMode,
+              updatedBy: ctx.session!.userId,
+            })
+            .where(
+              and(
+                eq(schema.invoices.id, id),
+                // Only affect PENDING invoices; silently skip PAID/CANCELLED.
+                sql`${schema.invoices.status} = 'PENDING'`
+              )
+            )
+            .run();
+          count += r.changes;
+        }
+        return count;
+      });
+      return { updated: tx() };
+    }
+  );
   safeHandle(IPC.INVOICES_GENERATE_PDF, { auth: "session", roles: STAFF_PLUS }, async (_ctx, rawId, rawOpts) => {
     const id = z.number().int().positive().parse(rawId);
     const opts = z
@@ -2290,6 +2331,100 @@ function registerIpcHandlers() {
       .where(eq(schema.invoices.id, id))
       .run();
     return { success: true };
+  });
+
+  // ── Leads ─────────────────────────────────────────────────────────────────
+  safeHandle(IPC.LEADS_LIST, { auth: "session", roles: ANY_AUTHED }, () =>
+    db.select().from(schema.leads).orderBy(desc(schema.leads.createdAt)).all()
+  );
+
+  safeHandle(IPC.LEADS_GET, { auth: "session", roles: ANY_AUTHED }, (_ctx, id) => {
+    const _id = z.number().int().positive().parse(id);
+    return db.select().from(schema.leads).where(eq(schema.leads.id, _id)).get();
+  });
+
+  safeHandle(IPC.LEADS_CREATE, { auth: "session", roles: STAFF_PLUS }, (ctx, raw) => {
+    const data = parseArg(leadCreateSchema, raw, "leads:create");
+    return db
+      .insert(schema.leads)
+      .values({
+        ...data,
+        status: "NEW",
+        createdBy: ctx.session!.userId,
+        updatedBy: ctx.session!.userId,
+      })
+      .returning()
+      .get();
+  });
+
+  safeHandle(IPC.LEADS_UPDATE, { auth: "session", roles: STAFF_PLUS }, (ctx, id, raw) => {
+    const _id = z.number().int().positive().parse(id);
+    const data = parseArg(leadUpdateSchema, raw, "leads:update");
+    return db
+      .update(schema.leads)
+      .set({ ...data, updatedBy: ctx.session!.userId })
+      .where(eq(schema.leads.id, _id))
+      .returning()
+      .get();
+  });
+
+  safeHandle(IPC.LEADS_DELETE, { auth: "session", roles: ADMIN_ONLY }, (_ctx, id) => {
+    const _id = z.number().int().positive().parse(id);
+    db.delete(schema.leads).where(eq(schema.leads.id, _id)).run();
+    return { success: true };
+  });
+
+  // Convert lead → customer in one transaction.
+  safeHandle(IPC.LEADS_CONVERT, { auth: "session", roles: STAFF_PLUS }, (ctx, id) => {
+    const _id = z.number().int().positive().parse(id);
+    const sqlite = getSqlite();
+    return sqlite.transaction(() => {
+      const lead = db.select().from(schema.leads).where(eq(schema.leads.id, _id)).get();
+      if (!lead) throw new Error("Lead not found");
+      if (lead.convertedCustomerId) throw new Error("Lead already converted");
+      const customer = db
+        .insert(schema.customers)
+        .values({
+          name: lead.name,
+          mobile: lead.mobile ?? "",
+          email: lead.email ?? "",
+          createdBy: ctx.session!.userId,
+          updatedBy: ctx.session!.userId,
+        })
+        .returning()
+        .get();
+      db.update(schema.leads)
+        .set({ status: "CONVERTED", convertedCustomerId: customer.id, updatedBy: ctx.session!.userId })
+        .where(eq(schema.leads.id, _id))
+        .run();
+      return { customerId: customer.id, leadId: _id };
+    })();
+  });
+
+  // ── Message Templates ──────────────────────────────────────────────────────
+  safeHandle(IPC.MESSAGE_TEMPLATES_LIST, { auth: "session", roles: ANY_AUTHED }, () =>
+    db.select().from(schema.messageTemplates).where(eq(schema.messageTemplates.isActive, true)).all()
+  );
+
+  safeHandle(IPC.MESSAGE_TEMPLATES_UPSERT, { auth: "session", roles: ADMIN_ONLY }, (_ctx, raw) => {
+    const data = z
+      .object({
+        id: z.number().int().positive().optional(),
+        name: z.string().min(1),
+        channel: z.enum(["whatsapp", "sms", "both"]).default("whatsapp"),
+        body: z.string().min(1),
+        isActive: z.boolean().default(true),
+      })
+      .parse(raw);
+    if (data.id) {
+      return db
+        .update(schema.messageTemplates)
+        .set({ name: data.name, channel: data.channel, body: data.body, isActive: data.isActive })
+        .where(eq(schema.messageTemplates.id, data.id))
+        .returning()
+        .get();
+    }
+    return db.insert(schema.messageTemplates).values(data).returning().get();
   });
 
   // Backup

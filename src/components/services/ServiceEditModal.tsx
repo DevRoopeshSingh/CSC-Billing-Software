@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { SERVICE_CATEGORIES } from "@/config/categories";
-import { ipc, IpcError, isBridgeMissingError } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import type { Service, ServiceChecklistItem } from "@/shared/types";
 import { X } from "lucide-react";
@@ -61,20 +61,23 @@ export function ServiceEditModal({
         keywords: service.keywords ?? "",
       });
       // Load existing checklist for this service.
-      ipc<ServiceChecklistItem[]>(IPC.SERVICE_CHECKLIST_LIST, {
-        serviceId: service.id,
-      })
-        .then((items) =>
-          setChecklist(
-            (items ?? []).map((i) => ({
-              id: i.id,
-              documentName: i.documentName,
-              isRequired: i.isRequired,
-              notes: i.notes ?? "",
-            }))
+      if (service.id) {
+        api
+          .get<ServiceChecklistItem[]>(API.SERVICE_CHECKLIST(service.id))
+          .then((items) =>
+            setChecklist(
+              (items ?? []).map((i) => ({
+                id: i.id,
+                documentName: i.documentName,
+                isRequired: i.isRequired,
+                notes: i.notes ?? "",
+              }))
+            )
           )
-        )
-        .catch(() => setChecklist([]));
+          .catch(() => setChecklist([]));
+      } else {
+        setChecklist([]);
+      }
     } else {
       setForm({ ...EMPTY_FORM, taxRate: defaultTaxRate });
       setChecklist([]);
@@ -95,10 +98,10 @@ export function ServiceEditModal({
       };
       let serviceId: number;
       if (service?.id) {
-        await ipc(IPC.SERVICES_UPDATE, service.id, payload);
+        await api.patch(API.SERVICE(service.id), payload);
         serviceId = service.id;
       } else {
-        const created = await ipc<Service>(IPC.SERVICES_CREATE, payload);
+        const created = await api.post<Service>(API.SERVICES, payload);
         if (!created?.id) throw new Error("Service id missing after create");
         serviceId = created.id;
       }
@@ -114,22 +117,14 @@ export function ServiceEditModal({
         }))
         .filter((i) => i.documentName.length > 0);
 
-      await ipc(IPC.SERVICE_CHECKLIST_UPSERT_BULK, {
-        serviceId,
-        items: validItems,
-      });
+      await api.put(API.SERVICE_CHECKLIST(serviceId), { items: validItems });
 
       toast(service ? "Service updated" : "Service added", "success");
       onSaved();
       onClose();
     } catch (err) {
-      if (isBridgeMissingError(err)) {
-        // Global banner already explains the situation.
-        setSaving(false);
-        return;
-      }
       toast(
-        err instanceof IpcError ? err.message : "Failed to save service",
+        err instanceof ApiError ? err.message : "Failed to save service",
         "error"
       );
     } finally {
