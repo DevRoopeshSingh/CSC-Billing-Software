@@ -14,7 +14,6 @@ import { useToast } from "@/components/Toast";
 import { buildCsv, downloadCsv } from "@/lib/csv";
 import type {
   Service,
-  CenterProfile,
   BulkDeleteServicesResult,
 } from "@/shared/types";
 import {
@@ -72,7 +71,9 @@ export default function ServicesPage() {
   useEffect(() => {
     (async () => {
       try {
-        const center = await ipc<CenterProfile>(IPC.CENTER_GET);
+        const center = await api.get<{ defaultTaxRate: number } | null>(
+          API.CENTER
+        );
         setGlobalTaxRate(center?.defaultTaxRate ?? 0);
       } catch {
         /* not configured yet */

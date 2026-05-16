@@ -6,14 +6,16 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/lib/auth-context";
 import { useCanAdmin } from "@/lib/permissions";
+import { PinPromptModal } from "@/components/auth/PinPromptModal";
 import {
   ALLOWED_BRANDING_MIME,
   MAX_BRANDING_ASSET_BYTES,
   type BrandingAssetKind,
-  type CenterProfile,
 } from "@/shared/types";
 import {
   Building2,
@@ -29,9 +31,35 @@ import {
   Printer,
   PrinterIcon,
   Lock,
+  Key,
 } from "lucide-react";
 
-// ── Form state mirrors all editable fields from CenterProfile ────────────────
+// ── Wire shape coming back from GET /api/center ──────────────────────────────
+interface CenterApi {
+  id: number;
+  centerName: string;
+  address: string;
+  mobile: string;
+  email: string;
+  udyamNumber: string;
+  upiId: string | null;
+  invoicePrefix: string;
+  invoiceNumber: number;
+  theme: string;
+  defaultTaxRate: number;
+  defaultPaymentMode: string;
+  hasPin: boolean;
+  operatingHours: string;
+  centerDescription: string;
+  printUpiQr: boolean;
+}
+
+// Printer subset still served by Electron/SQLite — not in the pg schema.
+interface PrinterFromIpc {
+  printerInterface?: string;
+  printerType?: string;
+}
+
 interface SettingsForm {
   centerName: string;
   address: string;
@@ -66,7 +94,7 @@ const DEFAULT_FORM: SettingsForm = {
   printUpiQr: false,
 };
 
-function profileToForm(p: CenterProfile): SettingsForm {
+function profileToForm(p: CenterApi, printer: PrinterFromIpc): SettingsForm {
   return {
     centerName: p.centerName ?? "",
     address: p.address ?? "",
@@ -80,13 +108,12 @@ function profileToForm(p: CenterProfile): SettingsForm {
     defaultPaymentMode:
       (p.defaultPaymentMode as SettingsForm["defaultPaymentMode"]) ?? "Cash",
     upiId: p.upiId ?? "",
-    printerInterface: p.printerInterface ?? "tcp://192.168.1.100:9100",
-    printerType: p.printerType ?? "EPSON",
+    printerInterface: printer.printerInterface ?? "tcp://192.168.1.100:9100",
+    printerType: printer.printerType ?? "EPSON",
     printUpiQr: p.printUpiQr ?? false,
   };
 }
 
-// ── Shared input class ────────────────────────────────────────────────────────
 const inputCls = cn(
   "w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground",
   "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
@@ -99,7 +126,6 @@ const textareaCls = cn(
   "placeholder:text-muted-foreground"
 );
 
-// ── Section card wrapper ──────────────────────────────────────────────────────
 function SectionCard({
   icon: Icon,
   title,
@@ -127,7 +153,6 @@ function SectionCard({
   );
 }
 
-// ── Label ─────────────────────────────────────────────────────────────────────
 function FieldLabel({
   children,
   required,
@@ -148,7 +173,6 @@ function FieldLabel({
   );
 }
 
-// ── Branding uploader (admin only) ───────────────────────────────────────────
 function BrandingUploader({
   title,
   description,
@@ -190,6 +214,10 @@ function BrandingUploader({
               src={previewUrl}
               alt={title}
               className={previewClassName}
+              onError={(e) => {
+                // 404 from the asset endpoint means nothing has been uploaded.
+                e.currentTarget.style.display = "none";
+              }}
             />
           ) : (
             <span className="px-2 text-center">{placeholder}</span>
@@ -206,7 +234,6 @@ function BrandingUploader({
               onChange={(e) => {
                 const f = e.target.files?.[0] ?? null;
                 onPick(f);
-                // Reset so the same filename can be re-picked.
                 e.target.value = "";
               }}
             />
@@ -249,7 +276,6 @@ function BrandingUploader({
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -257,19 +283,27 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState<number>(0);
+  const [hasPin, setHasPin] = useState(false);
   const [form, setForm] = useState<SettingsForm>(DEFAULT_FORM);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [upiQrUrl, setUpiQrUrl] = useState<string | null>(null);
+  // Cache-bust counter per kind. We bump it on upload/delete so the <img>
+  // element refetches instead of serving the 60-second-cached old asset.
+  const [assetVersion, setAssetVersion] = useState({ logo: 0, upiQr: 0 });
+  const [hasAsset, setHasAsset] = useState({ logo: false, upiQr: false });
   const [uploading, setUploading] = useState<BrandingAssetKind | null>(null);
+  const [pendingUpload, setPendingUpload] = useState<{
+    kind: BrandingAssetKind;
+    file: File;
+  } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const qrInputRef = useRef<HTMLInputElement>(null);
+
+  // PIN change card state
+  const [pinForm, setPinForm] = useState({ currentPin: "", newPin: "" });
+  const [savingPin, setSavingPin] = useState(false);
 
   const [testingPrinter, setTestingPrinter] = useState(false);
   const isAdmin = useCanAdmin();
 
-  // Page-level guard: viewer/staff cannot manage settings. Backend enforces
-  // it too; this just keeps the URL from rendering a confusing "saving fails"
-  // experience.
   useEffect(() => {
     if (!user) return;
     if (!isAdmin) {
@@ -280,16 +314,18 @@ export default function SettingsPage() {
   const set = <K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  const loadAsset = useCallback(
-    async (kind: BrandingAssetKind): Promise<string | null> => {
+  // Probe each asset by HEAD so the uploader shows "Replace" vs "Upload"
+  // accurately on first load. Errors fall through to "no asset present".
+  const probeAsset = useCallback(
+    async (kind: BrandingAssetKind): Promise<boolean> => {
       try {
-        const res = await ipc<{ dataUrl: string | null }>(
-          IPC.CENTER_GET_BRANDING_ASSET,
-          kind
-        );
-        return res?.dataUrl ?? null;
+        const res = await fetch(API.CENTER_BRANDING_ASSET(kind), {
+          method: "HEAD",
+          credentials: "same-origin",
+        });
+        return res.ok;
       } catch {
-        return null;
+        return false;
       }
     },
     []
@@ -297,33 +333,45 @@ export default function SettingsPage() {
 
   const loadProfile = useCallback(async () => {
     try {
-      const profile = await ipc<CenterProfile>(IPC.CENTER_GET);
-      if (profile) {
-        setForm(profileToForm(profile));
-        setInvoiceNumber(profile.invoiceNumber ?? 0);
-      }
-      const [logo, qr] = await Promise.all([
-        loadAsset("logo"),
-        loadAsset("upiQr"),
+      // Web fields come from /api/center. Printer fields still live in
+      // SQLite (Electron-only); silently skip if IPC isn't available
+      // (plain browser / dev server without preload).
+      const [profile, printerIpc, logoPresent, qrPresent] = await Promise.all([
+        api.get<CenterApi | null>(API.CENTER),
+        ipc<{ printerInterface?: string; printerType?: string }>(IPC.CENTER_GET)
+          .then((p) => ({
+            printerInterface: p?.printerInterface,
+            printerType: p?.printerType,
+          }))
+          .catch(() => ({})),
+        probeAsset("logo"),
+        probeAsset("upiQr"),
       ]);
-      setLogoUrl(logo);
-      setUpiQrUrl(qr);
+      if (profile) {
+        setForm(profileToForm(profile, printerIpc));
+        setInvoiceNumber(profile.invoiceNumber ?? 0);
+        setHasPin(profile.hasPin);
+      }
+      setHasAsset({ logo: logoPresent, upiQr: qrPresent });
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to load settings",
+        err instanceof ApiError ? err.message : "Failed to load settings",
         "error"
       );
     } finally {
       setLoading(false);
     }
-  }, [toast, loadAsset]);
+  }, [toast, probeAsset]);
 
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
 
-  // ── Branding upload helpers ────────────────────────────────────────────
-  const handleBrandingFile = async (
+  // ── Branding flow ──────────────────────────────────────────────────────────
+  // Pick a file → client-side validate → stash + show PIN modal. The PIN is
+  // sent with the multipart POST so the upload itself is what gets PIN-
+  // verified (no separate verify-then-act race).
+  const handleBrandingFile = (
     kind: BrandingAssetKind,
     file: File | null
   ) => {
@@ -345,28 +393,30 @@ export default function SettingsPage() {
       );
       return;
     }
+    setPendingUpload({ kind, file });
+  };
+
+  const confirmUpload = async (pin: string) => {
+    if (!pendingUpload) return;
+    const { kind, file } = pendingUpload;
     setUploading(kind);
     try {
-      const buf = await file.arrayBuffer();
-      await ipc<CenterProfile>(IPC.CENTER_UPLOAD_BRANDING, {
-        kind,
-        mimeType: file.type,
-        data: new Uint8Array(buf),
+      const fd = new FormData();
+      fd.append("kind", kind);
+      fd.append("file", file);
+      await api.post(API.CENTER_BRANDING, fd, {
+        headers: { "x-admin-pin": pin },
       });
-      const next = await loadAsset(kind);
-      if (kind === "logo") setLogoUrl(next);
-      else setUpiQrUrl(next);
-      toast(
-        `${kind === "logo" ? "Logo" : "UPI QR"} updated`,
-        "success"
-      );
+      setAssetVersion((v) => ({ ...v, [kind]: v[kind] + 1 }));
+      setHasAsset((h) => ({ ...h, [kind]: true }));
+      toast(`${kind === "logo" ? "Logo" : "UPI QR"} updated`, "success");
+      setPendingUpload(null);
     } catch (err) {
-      toast(
-        err instanceof IpcError
-          ? err.message
-          : `Failed to upload ${kind === "logo" ? "logo" : "UPI QR"}`,
-        "error"
-      );
+      throw err instanceof ApiError
+        ? err
+        : new Error(
+            `Failed to upload ${kind === "logo" ? "logo" : "UPI QR"}`
+          );
     } finally {
       setUploading(null);
     }
@@ -375,16 +425,13 @@ export default function SettingsPage() {
   const handleBrandingDelete = async (kind: BrandingAssetKind) => {
     setUploading(kind);
     try {
-      await ipc(IPC.CENTER_DELETE_BRANDING, kind);
-      if (kind === "logo") setLogoUrl(null);
-      else setUpiQrUrl(null);
-      toast(
-        `${kind === "logo" ? "Logo" : "UPI QR"} removed`,
-        "success"
-      );
+      await api.delete(API.CENTER_BRANDING_ASSET(kind));
+      setHasAsset((h) => ({ ...h, [kind]: false }));
+      setAssetVersion((v) => ({ ...v, [kind]: v[kind] + 1 }));
+      toast(`${kind === "logo" ? "Logo" : "UPI QR"} removed`, "success");
     } catch (err) {
       toast(
-        err instanceof IpcError
+        err instanceof ApiError
           ? err.message
           : `Failed to remove ${kind === "logo" ? "logo" : "UPI QR"}`,
         "error"
@@ -394,22 +441,20 @@ export default function SettingsPage() {
     }
   };
 
+  // ── Save settings ──────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validate invoice prefix
     if (!form.invoicePrefix.trim()) {
       toast("Invoice prefix cannot be empty", "error");
       return;
     }
-
     setSaving(true);
     try {
-      const payload = {
+      // Web-side fields → Postgres via PATCH /api/center.
+      const webPayload = {
         centerName: form.centerName.trim(),
         address: form.address.trim(),
         mobile: form.mobile.trim(),
-        // Always send a string for email — Zod validates email().or(literal(""))
         email: form.email.trim(),
         udyamNumber: form.udyamNumber.trim(),
         centerDescription: form.centerDescription.trim(),
@@ -418,20 +463,58 @@ export default function SettingsPage() {
         defaultTaxRate: Number(form.defaultTaxRate),
         defaultPaymentMode: form.defaultPaymentMode,
         upiId: form.upiId.trim() || null,
-        printerInterface: form.printerInterface.trim(),
-        printerType: form.printerType,
         printUpiQr: form.printUpiQr,
       };
+      await api.patch(API.CENTER, webPayload);
 
-      await ipc(IPC.CENTER_UPDATE, payload);
+      // Printer-only fields still live in SQLite (the thermal-print path
+      // hasn't migrated yet). In a plain browser this throws — swallow it,
+      // there's no printer to configure anyway.
+      await ipc(IPC.CENTER_UPDATE, {
+        printerInterface: form.printerInterface.trim(),
+        printerType: form.printerType,
+      }).catch(() => {
+        /* no electron → no printer config persistence */
+      });
+
       toast("Settings saved successfully", "success");
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to save settings",
+        err instanceof ApiError ? err.message : "Failed to save settings",
         "error"
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ── PIN change ─────────────────────────────────────────────────────────────
+  const handlePinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinForm.newPin.length < 6) {
+      toast("New PIN must be at least 6 digits", "error");
+      return;
+    }
+    if (hasPin && pinForm.currentPin.length < 4) {
+      toast("Current PIN is required to change the admin PIN.", "error");
+      return;
+    }
+    setSavingPin(true);
+    try {
+      await api.post(API.CENTER_PIN, {
+        newPin: pinForm.newPin,
+        ...(hasPin ? { currentPin: pinForm.currentPin } : {}),
+      });
+      setPinForm({ currentPin: "", newPin: "" });
+      setHasPin(true);
+      toast("Admin PIN updated", "success");
+    } catch (err) {
+      toast(
+        err instanceof ApiError ? err.message : "Failed to update PIN",
+        "error"
+      );
+    } finally {
+      setSavingPin(false);
     }
   };
 
@@ -464,8 +547,6 @@ export default function SettingsPage() {
   }
 
   if (!isAdmin) {
-    // Redirect already fired in the effect; render a stable placeholder so we
-    // don't flash an unauthorized form.
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         <Lock className="h-8 w-8" />
@@ -474,9 +555,13 @@ export default function SettingsPage() {
     );
   }
 
+  const assetUrl = (kind: BrandingAssetKind) =>
+    hasAsset[kind]
+      ? `${API.CENTER_BRANDING_ASSET(kind)}?v=${assetVersion[kind]}`
+      : null;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6 pb-10">
-      {/* Header */}
       <div className="flex items-end justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Settings</h2>
@@ -503,7 +588,6 @@ export default function SettingsPage() {
         </button>
       </div>
 
-      {/* ── Section 1: Center Information ─────────────────────────────── */}
       <SectionCard
         icon={Building2}
         title="Center Information"
@@ -591,7 +675,6 @@ export default function SettingsPage() {
         </div>
       </SectionCard>
 
-      {/* ── Section 2: Invoice Defaults ───────────────────────────────── */}
       <SectionCard
         icon={Receipt}
         title="Invoice Defaults"
@@ -669,7 +752,6 @@ export default function SettingsPage() {
         </div>
       </SectionCard>
 
-      {/* ── Section 3: Branding (Logo + UPI QR + UPI ID) ───────────────── */}
       <SectionCard
         icon={Wallet}
         title="Branding & Payment"
@@ -679,9 +761,9 @@ export default function SettingsPage() {
           <BrandingUploader
             kind="logo"
             title="Company Logo"
-            description="Shown in the top-left of every invoice. PNG or JPEG, max 2 MB."
+            description="Shown in the top-left of every invoice. PNG or JPEG, max 2 MB. Upload requires Admin PIN."
             icon={ImageIcon}
-            previewUrl={logoUrl}
+            previewUrl={assetUrl("logo")}
             uploading={uploading === "logo"}
             inputRef={logoInputRef}
             onPick={(file) => handleBrandingFile("logo", file)}
@@ -692,9 +774,9 @@ export default function SettingsPage() {
           <BrandingUploader
             kind="upiQr"
             title="UPI QR Code"
-            description="Printed in the invoice footer so customers can scan to pay."
+            description="Printed in the invoice footer so customers can scan to pay. Upload requires Admin PIN."
             icon={QrCode}
-            previewUrl={upiQrUrl}
+            previewUrl={assetUrl("upiQr")}
             uploading={uploading === "upiQr"}
             inputRef={qrInputRef}
             onPick={(file) => handleBrandingFile("upiQr", file)}
@@ -714,21 +796,78 @@ export default function SettingsPage() {
             className={inputCls}
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Printed alongside the QR as "Pay via UPI: yourname@upi".
+            Printed alongside the QR as &quot;Pay via UPI: yourname@upi&quot;.
           </p>
         </div>
       </SectionCard>
 
-      {/* ── Section 4: Printer & Receipts ─────────────────────────────── */}
+      <SectionCard
+        icon={Key}
+        title="Admin PIN"
+        subtitle="Required to authorize destructive operations (delete, cancel, branding upload)"
+      >
+        <div className="grid grid-cols-2 gap-4 max-w-xl">
+          {hasPin && (
+            <div>
+              <FieldLabel required>Current PIN</FieldLabel>
+              <input
+                type="password"
+                value={pinForm.currentPin}
+                onChange={(e) =>
+                  setPinForm((p) => ({ ...p, currentPin: e.target.value }))
+                }
+                className={inputCls}
+                autoComplete="off"
+              />
+            </div>
+          )}
+          <div>
+            <FieldLabel required hint="min 6 chars">
+              New PIN
+            </FieldLabel>
+            <input
+              type="password"
+              value={pinForm.newPin}
+              onChange={(e) =>
+                setPinForm((p) => ({ ...p, newPin: e.target.value }))
+              }
+              className={inputCls}
+              autoComplete="new-password"
+            />
+          </div>
+        </div>
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={handlePinSubmit}
+            disabled={savingPin}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2",
+              "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark",
+              "disabled:opacity-60"
+            )}
+          >
+            {savingPin ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Key className="h-4 w-4" />
+            )}
+            {hasPin ? "Change PIN" : "Set PIN"}
+          </button>
+        </div>
+      </SectionCard>
+
       <SectionCard
         icon={Printer}
         title="Printer Settings"
-        subtitle="Configure your thermal receipt printer"
+        subtitle="Configure your thermal receipt printer (desktop / Electron only)"
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <FieldLabel required hint="IP or USB">Printer Interface</FieldLabel>
+              <FieldLabel required hint="IP or USB">
+                Printer Interface
+              </FieldLabel>
               <input
                 type="text"
                 value={form.printerInterface}
@@ -756,7 +895,7 @@ export default function SettingsPage() {
               </select>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3 pt-2">
             <input
               type="checkbox"
@@ -765,14 +904,18 @@ export default function SettingsPage() {
               onChange={(e) => set("printUpiQr", e.target.checked)}
               className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
             />
-            <label htmlFor="printUpiQr" className="text-sm font-medium text-foreground">
+            <label
+              htmlFor="printUpiQr"
+              className="text-sm font-medium text-foreground"
+            >
               Print UPI QR Code on Receipts
             </label>
           </div>
 
           <div className="pt-2 border-t border-border mt-4 flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              Click test to verify printer connection with current unsaved settings.
+              Click test to verify printer connection with current unsaved
+              settings.
             </p>
             <button
               type="button"
@@ -795,7 +938,6 @@ export default function SettingsPage() {
         </div>
       </SectionCard>
 
-      {/* ── Section 5: Operating Schedule (cosmetic) ──────────────────── */}
       <SectionCard
         icon={Clock}
         title="Schedule & Notes"
@@ -825,7 +967,6 @@ export default function SettingsPage() {
         </div>
       </SectionCard>
 
-      {/* ── Sticky save bar at bottom ─────────────────────────────────── */}
       <div
         className={cn(
           "flex items-center justify-between rounded-xl border border-border bg-card px-6 py-4",
@@ -852,6 +993,18 @@ export default function SettingsPage() {
           {saving ? "Saving…" : "Save Settings"}
         </button>
       </div>
+
+      {pendingUpload && (
+        <PinPromptModal
+          title="Upload Branding"
+          description={`Enter Admin PIN to upload ${
+            pendingUpload.kind === "logo" ? "the company logo" : "the UPI QR"
+          }. This image appears on every invoice.`}
+          confirmLabel="Upload"
+          onConfirm={confirmUpload}
+          onCancel={() => setPendingUpload(null)}
+        />
+      )}
     </form>
   );
 }

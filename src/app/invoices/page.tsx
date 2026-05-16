@@ -6,8 +6,8 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
-import { ipc, IpcError } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import type { InvoiceDetail } from "@/shared/types";
 import {
@@ -48,11 +48,11 @@ function InvoicesContent() {
   const loadInvoices = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await ipc<InvoiceDetail[]>(IPC.INVOICES_LIST);
+      const list = await api.get<InvoiceDetail[]>(API.INVOICES);
       setInvoices(list ?? []);
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to load invoices",
+        err instanceof ApiError ? err.message : "Failed to load invoices",
         "error"
       );
     } finally {
@@ -75,13 +75,13 @@ function InvoicesContent() {
       return;
     }
     try {
-      await ipc(IPC.INVOICES_UPDATE_STATUS, id, newStatus);
+      await api.post(API.INVOICE_STATUS(id), { status: newStatus });
       setInvoices((list) =>
         list.map((i) => (i.id === id ? { ...i, status: newStatus } : i))
       );
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to update status",
+        err instanceof ApiError ? err.message : "Failed to update status",
         "error"
       );
     }

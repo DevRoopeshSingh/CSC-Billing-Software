@@ -164,20 +164,28 @@ export async function bulkUpdateServices(
 export const bulkDeleteInputSchema = bulkDeleteServicesSchema;
 export type BulkDeleteInput = z.infer<typeof bulkDeleteInputSchema>;
 
-// Phase 2 limitation: the in-use guard (skip services referenced by
-// invoice_items) is omitted because invoice_items hasn't been ported to
-// Postgres yet. The response shape is preserved — skippedInUse is always
-// []. When Phase 3 lands the invoices slice, reinstate the guard by
-// querying invoice_items.service_id and filtering ids here.
+// In-use guard: services referenced by any invoice_items row are returned in
+// skippedInUse and not deleted. Backed by idx_invoice_items_service so the
+// scan stays cheap as invoice volume grows.
 export async function bulkDeleteServices(
   input: BulkDeleteInput
 ): Promise<BulkDeleteServicesResult> {
   const db = getDb();
-  const rows = await db
-    .delete(schema.services)
-    .where(inArray(schema.services.id, input.ids))
-    .returning({ id: schema.services.id });
-  return { deleted: rows.length, skippedInUse: [] };
+  const inUse = await db
+    .selectDistinct({ id: schema.invoiceItems.serviceId })
+    .from(schema.invoiceItems)
+    .where(inArray(schema.invoiceItems.serviceId, input.ids));
+  const skippedInUse = inUse.map((r) => r.id);
+  const inUseSet = new Set(skippedInUse);
+  const safeIds = input.ids.filter((id) => !inUseSet.has(id));
+  const rows =
+    safeIds.length === 0
+      ? []
+      : await db
+          .delete(schema.services)
+          .where(inArray(schema.services.id, safeIds))
+          .returning({ id: schema.services.id });
+  return { deleted: rows.length, skippedInUse };
 }
 
 // ── Service checklist ───────────────────────────────────────────────────────

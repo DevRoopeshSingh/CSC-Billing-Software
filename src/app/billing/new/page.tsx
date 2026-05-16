@@ -1,12 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ipc, IpcError } from "@/lib/ipc";
+import { ipc } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import { useCanWrite } from "@/lib/permissions";
-import type { Service, Customer, CenterProfile } from "@/shared/types";
+import type { Service, Customer } from "@/shared/types";
+
+interface CenterApi {
+  defaultPaymentMode: string;
+}
 import { InvoiceFormUI } from "@/components/billing/InvoiceFormUI";
 import {
   useInvoiceState,
@@ -30,34 +36,39 @@ function NewInvoiceContent() {
   const { state, actions } = useInvoiceState();
   const totals = useInvoiceTotals(state.lineItems, state.discount);
 
+  // Stable ref so the fetch effect doesn't re-run when the actions object
+  // reference changes on re-render (plain object literal = new ref every time).
+  const setPaymentModeRef = useRef(actions.setPaymentMode);
+  setPaymentModeRef.current = actions.setPaymentMode;
+
   useEffect(() => {
     (async () => {
       try {
         const [svcs, center] = await Promise.all([
-          ipc<Service[]>(IPC.SERVICES_LIST),
-          ipc<CenterProfile>(IPC.CENTER_GET),
+          api.get<Service[]>(API.SERVICES),
+          api.get<CenterApi | null>(API.CENTER).catch(() => null),
         ]);
         setServices((svcs ?? []).filter((s) => s.isActive));
         if (center?.defaultPaymentMode) {
-          actions.setPaymentMode(
+          setPaymentModeRef.current(
             center.defaultPaymentMode as "Cash" | "UPI" | "Card" | "Other"
           );
         }
       } catch (err) {
         toast(
-          err instanceof IpcError ? err.message : "Failed to load services",
+          err instanceof ApiError ? err.message : "Failed to load services",
           "error"
         );
       }
     })();
-  }, [toast, actions]);
+  }, [toast]); // 'actions' removed — it's a new object ref every render; setPaymentMode accessed via stable ref
 
   const searchCustomers = useCallback(async (q: string) => {
     try {
-      const list = await ipc<Customer[]>(
-        q ? IPC.CUSTOMERS_SEARCH : IPC.CUSTOMERS_LIST,
-        q || undefined
-      );
+      const path = q
+        ? `${API.CUSTOMERS_SEARCH}?q=${encodeURIComponent(q)}`
+        : API.CUSTOMERS;
+      const list = await api.get<Customer[]>(path);
       setCustomers(list ?? []);
     } catch {
       setCustomers([]);
@@ -91,8 +102,8 @@ function NewInvoiceContent() {
     setActionLoading(status === "PAID" ? "save" : "draft");
     try {
       const payload = buildInvoicePayload(state, status);
-      const result = await ipc<{ id: number; invoiceNo: string }>(
-        IPC.INVOICES_CREATE,
+      const result = await api.post<{ id: number; invoiceNo: string }>(
+        API.INVOICES,
         payload
       );
       toast(`Invoice ${result.invoiceNo} created`, "success");

@@ -73,10 +73,16 @@ async function request<T>(
     Accept: "application/json",
     ...(opts.headers ?? {}),
   };
-  let body: string | undefined;
+  let body: BodyInit | undefined;
   if (opts.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(opts.body);
+    if (opts.body instanceof FormData) {
+      // Let fetch set the multipart boundary itself. Setting Content-Type
+      // here would strip the boundary and the server would fail to parse.
+      body = opts.body;
+    } else {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(opts.body);
+    }
   }
   if (method !== "GET" && method !== "HEAD") {
     const csrf = readCsrf();

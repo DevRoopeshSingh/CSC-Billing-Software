@@ -1,6 +1,6 @@
 // POST /api/services/bulk-delete → BulkDeleteServicesResult  (admin + x-admin-pin)
-// Phase 2 limitation: skippedInUse is always [] until invoice_items lands in
-// Postgres (see comment in src/server/handlers/services.ts:bulkDeleteServices).
+// In-use guard: services referenced by invoice_items are returned in
+// skippedInUse and not deleted. See src/server/handlers/services.ts.
 import { withAuth, ADMIN_ONLY } from "@/server/auth/with-auth";
 import {
   bulkDeleteServices,

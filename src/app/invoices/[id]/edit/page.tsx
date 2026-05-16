@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState, Suspense } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { ipc, IpcError } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import type { InvoiceDetail, Service, Customer } from "@/shared/types";
 import { InvoiceFormUI } from "@/components/billing/InvoiceFormUI";
@@ -53,10 +53,10 @@ function EditInvoiceForm({
 
   const searchCustomers = useCallback(async (q: string) => {
     try {
-      const list = await ipc<Customer[]>(
-        q ? IPC.CUSTOMERS_SEARCH : IPC.CUSTOMERS_LIST,
-        q || undefined
-      );
+      const path = q
+        ? `${API.CUSTOMERS_SEARCH}?q=${encodeURIComponent(q)}`
+        : API.CUSTOMERS;
+      const list = await api.get<Customer[]>(path);
       setCustomers(list ?? []);
     } catch {
       setCustomers([]);
@@ -77,7 +77,7 @@ function EditInvoiceForm({
     setActionLoading(status === "PAID" ? "save" : "draft");
     try {
       const payload = buildInvoicePayload(state, status);
-      await ipc(IPC.INVOICES_UPDATE, invoice.id, payload);
+      await api.patch(API.INVOICE(invoice.id!), payload);
       toast(`Invoice ${invoice.invoiceNo} updated`, "success");
       router.push(`/invoices/${invoice.id}`);
     } catch (err) {
@@ -127,8 +127,8 @@ function EditInvoiceContent() {
     (async () => {
       try {
         const [svcs, inv] = await Promise.all([
-          ipc<Service[]>(IPC.SERVICES_LIST),
-          ipc<InvoiceDetail | undefined>(IPC.INVOICES_GET, invoiceId),
+          api.get<Service[]>(API.SERVICES),
+          api.get<InvoiceDetail | null>(API.INVOICE(invoiceId)),
         ]);
         setServices((svcs ?? []).filter((s) => s.isActive));
         if (!inv) {
@@ -141,7 +141,7 @@ function EditInvoiceContent() {
         }
       } catch (err) {
         setError(
-          err instanceof IpcError
+          err instanceof ApiError
             ? err.message
             : err instanceof Error
               ? err.message

@@ -21,4 +21,16 @@ export const API = {
   SERVICE: (id: number) => `/api/services/${id}`,
   SERVICE_BOOKMARK: (id: number) => `/api/services/${id}/bookmark`,
   SERVICE_CHECKLIST: (id: number) => `/api/services/${id}/checklist`,
+
+  INVOICES: "/api/invoices",
+  INVOICES_BULK_MARK_PAID: "/api/invoices/bulk-mark-paid",
+  INVOICE: (id: number) => `/api/invoices/${id}`,
+  INVOICE_STATUS: (id: number) => `/api/invoices/${id}/status`,
+  INVOICE_CANCEL: (id: number) => `/api/invoices/${id}/cancel`,
+
+  CENTER: "/api/center",
+  CENTER_PIN: "/api/center/pin",
+  CENTER_BRANDING: "/api/center/branding",
+  CENTER_BRANDING_ASSET: (kind: "logo" | "upiQr") =>
+    `/api/center/branding/${kind}`,
 } as const;

@@ -7,10 +7,11 @@ import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/formatters";
 import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/lib/auth-context";
 import { useCanAdmin } from "@/lib/permissions";
-import type { CenterProfile } from "@/shared/types";
 import {
   HardDrive,
   Download,
@@ -37,14 +38,21 @@ export default function BackupPage() {
   const [showPinModal, setShowPinModal] = useState(false);
 
   // ── Load last backup timestamp from center profile ────────────────────────
+  // The lastBackupDate field is read from /api/center but still stamped via
+  // IPC.CENTER_UPDATE after a backup completes — the backup subsystem itself
+  // remains Electron/SQLite-only in this phase.
   const loadLastBackup = useCallback(async () => {
     try {
-      const profile = await ipc<CenterProfile>(IPC.CENTER_GET);
+      const profile = await api.get<{ lastBackupDate: string | null } | null>(
+        API.CENTER
+      );
       setLastBackupDate(
         profile?.lastBackupDate ? new Date(profile.lastBackupDate) : null
       );
-    } catch {
-      // non-critical — just show "No backup yet"
+    } catch (err) {
+      if (err instanceof ApiError) {
+        // non-critical — fall through, "No backup yet" stays
+      }
     } finally {
       setLoadingDate(false);
     }

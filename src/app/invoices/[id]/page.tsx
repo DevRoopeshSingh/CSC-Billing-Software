@@ -8,14 +8,22 @@ import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { ipc, IpcError } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import type {
-  CenterProfile,
   InvoiceDetail,
   InvoiceItem,
   InvoiceStatus,
   Service,
 } from "@/shared/types";
+
+interface CenterApi {
+  centerName: string;
+  address: string;
+  mobile: string;
+  email: string;
+}
 
 type LineItemWithService = InvoiceItem & { service?: Service };
 import {
@@ -54,8 +62,8 @@ export default function InvoiceDetailPage() {
   }, [params]);
 
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
-  const [center, setCenter] = useState<CenterProfile | null>(null);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [center, setCenter] = useState<CenterApi | null>(null);
+  const [hasLogo, setHasLogo] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [showPinModal, setShowPinModal] = useState<
@@ -73,24 +81,29 @@ export default function InvoiceDetailPage() {
     }
     setLoading(true);
     try {
-      const [data, profile, logoRes] = await Promise.all([
-        ipc<InvoiceDetail | undefined>(IPC.INVOICES_GET, invoiceId),
-        ipc<CenterProfile | undefined>(IPC.CENTER_GET).catch(() => undefined),
-        ipc<{ dataUrl: string | null }>(
-          IPC.CENTER_GET_BRANDING_ASSET,
-          "logo"
-        ).catch(() => ({ dataUrl: null })),
+      // Invoice (Phase 3) and center profile + branding (Phase 4) all over
+      // HTTP now. PDF/print on this page still go through IPC — see those
+      // handlers below.
+      const [data, profile, logoHead] = await Promise.all([
+        api.get<InvoiceDetail | null>(API.INVOICE(invoiceId)),
+        api.get<CenterApi | null>(API.CENTER).catch(() => null),
+        fetch(API.CENTER_BRANDING_ASSET("logo"), {
+          method: "HEAD",
+          credentials: "same-origin",
+        })
+          .then((r) => r.ok)
+          .catch(() => false),
       ]);
       if (!data) {
         setNotFound(true);
       } else {
         setInvoice(data);
       }
-      setCenter(profile ?? null);
-      setLogoUrl(logoRes?.dataUrl ?? null);
+      setCenter(profile);
+      setHasLogo(logoHead);
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to load invoice",
+        err instanceof ApiError ? err.message : "Failed to load invoice",
         "error"
       );
     } finally {
@@ -112,12 +125,12 @@ export default function InvoiceDetailPage() {
     }
     setBusy("status");
     try {
-      await ipc(IPC.INVOICES_UPDATE_STATUS, invoice.id, next);
+      await api.post(API.INVOICE_STATUS(invoice.id!), { status: next });
       setInvoice({ ...invoice, status: next });
       toast(`Marked ${next.toLowerCase()}`, "success");
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to update status",
+        err instanceof ApiError ? err.message : "Failed to update status",
         "error"
       );
     } finally {
@@ -179,12 +192,14 @@ export default function InvoiceDetailPage() {
     if (!invoice?.id) return;
     setBusy("delete");
     try {
-      await ipc(IPC.INVOICES_DELETE, invoice.id, pin);
+      await api.delete(API.INVOICE(invoice.id), {
+        headers: { "x-admin-pin": pin },
+      });
       toast("Invoice deleted", "success");
       setShowPinModal(null);
       router.push("/invoices");
     } catch (err) {
-      throw err instanceof IpcError
+      throw err instanceof ApiError
         ? err
         : new Error("Failed to delete invoice");
     } finally {
@@ -196,12 +211,14 @@ export default function InvoiceDetailPage() {
     if (!invoice?.id) return;
     setBusy("status");
     try {
-      await ipc(IPC.INVOICES_UPDATE_STATUS, invoice.id, "CANCELLED", pin);
+      await api.post(API.INVOICE_CANCEL(invoice.id), undefined, {
+        headers: { "x-admin-pin": pin },
+      });
       setInvoice({ ...invoice, status: "CANCELLED" });
       toast("Invoice cancelled", "success");
       setShowPinModal(null);
     } catch (err) {
-      throw err instanceof IpcError
+      throw err instanceof ApiError
         ? err
         : new Error("Failed to cancel invoice");
     } finally {
@@ -370,9 +387,9 @@ export default function InvoiceDetailPage() {
       {/* ── Branding strip (logo + center identity) ──────────────────── */}
       <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
-          {logoUrl ? (
+          {hasLogo ? (
             <img
-              src={logoUrl}
+              src={API.CENTER_BRANDING_ASSET("logo")}
               alt={center?.centerName ?? "Logo"}
               className="h-full w-full object-contain"
             />
