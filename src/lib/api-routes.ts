@@ -33,4 +33,7 @@ export const API = {
   CENTER_BRANDING: "/api/center/branding",
   CENTER_BRANDING_ASSET: (kind: "logo" | "upiQr") =>
     `/api/center/branding/${kind}`,
+
+  REPORTS_SUMMARY: "/api/reports/summary",
+  REPORTS_PENDING_DUES: "/api/reports/pending-dues",
 } as const;

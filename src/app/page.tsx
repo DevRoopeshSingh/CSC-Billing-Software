@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
-import { ipc } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import BookmarkedServices from "@/components/BookmarkedServices";
 import type { InvoiceDetail } from "@/shared/types";
@@ -115,9 +115,11 @@ export default function DashboardPage() {
       const today = isoDate(new Date());
       lastLoadedDateRef.current = today;
       const [todaySummary, dues, allInvoices] = await Promise.all([
-        ipc<ReportSummary>(IPC.REPORTS_SUMMARY, { start: today, end: today }),
-        ipc<PendingDues>(IPC.REPORTS_PENDING_DUES),
-        ipc<InvoiceDetail[]>(IPC.INVOICES_LIST),
+        api.get<ReportSummary>(
+          `${API.REPORTS_SUMMARY}?start=${today}&end=${today}`
+        ),
+        api.get<PendingDues>(API.REPORTS_PENDING_DUES),
+        api.get<InvoiceDetail[]>(API.INVOICES),
       ]);
 
       const t = todaySummary?.totals;
