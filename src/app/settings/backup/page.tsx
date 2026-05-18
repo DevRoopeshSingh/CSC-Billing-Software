@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/formatters";
-import { ipc, IpcError } from "@/lib/ipc";
+import { ipc, IpcError, isBridgeAvailable } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { api, ApiError } from "@/lib/api-client";
 import { API } from "@/lib/api-routes";
@@ -36,6 +36,11 @@ export default function BackupPage() {
   const [importing, setImporting] = useState(false);
   const [lastExportPath, setLastExportPath] = useState<string | null>(null);
   const [showPinModal, setShowPinModal] = useState(false);
+  const [hasBridge, setHasBridge] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setHasBridge(isBridgeAvailable());
+  }, []);
 
   // ── Load last backup timestamp from center profile ────────────────────────
   // The lastBackupDate field is read from /api/center but still stamped via
@@ -74,6 +79,23 @@ export default function BackupPage() {
       <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         <Lock className="h-8 w-8" />
         <p className="text-sm">Backup &amp; restore are admin-only.</p>
+      </div>
+    );
+  }
+
+  if (hasBridge === null) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (hasBridge === false) {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <HardDrive className="h-8 w-8" />
+        <p className="text-sm">File system backups are only available in the desktop app.</p>
       </div>
     );
   }

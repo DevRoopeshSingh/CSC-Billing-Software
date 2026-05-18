@@ -20,10 +20,7 @@ export function BridgeStatusBanner() {
     <div className="flex items-center gap-2 border-b border-amber-300 bg-amber-100 px-4 py-2 text-xs text-amber-900">
       <AlertTriangle className="h-3.5 w-3.5 flex-none" />
       <p>
-        <span className="font-semibold">Browser preview mode.</span> The IPC
-        bridge to the local database is only available inside the desktop app.
-        Open this app via Electron (e.g. <code>npm run electron:dev</code>) to
-        load services, invoices, and customers.
+        <span className="font-semibold">Browser mode.</span> Hardware-dependent features like direct thermal printing, PDF generation, and local filesystem backups are only available inside the desktop app.
       </p>
     </div>
   );

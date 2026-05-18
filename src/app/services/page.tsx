@@ -4,10 +4,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { SERVICE_CATEGORIES } from "@/config/categories";
-// Two IPC call sites remain on this page (CENTER_GET + SERVICES_LOAD_SEED_CATALOGUE)
-// and will migrate when the settings slice / seed loader move to HTTP.
-import { ipc, IpcError } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+// (CENTER_GET will migrate when the settings slice moves to HTTP)
 import { api, ApiError } from "@/lib/api-client";
 import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
@@ -319,8 +316,8 @@ export default function ServicesPage() {
       return;
     setSeedBusy(true);
     try {
-      const r = await ipc<ServicesImportResult>(
-        IPC.SERVICES_LOAD_SEED_CATALOGUE,
+      const r = await api.post<ServicesImportResult>(
+        API.SERVICES_LOAD_SEED,
         { mode: "commit" }
       );
       toast(
@@ -330,7 +327,7 @@ export default function ServicesPage() {
       await loadServices();
     } catch (err) {
       toast(
-        err instanceof IpcError
+        err instanceof ApiError
           ? err.message
           : "Failed to load seed catalogue",
         "error"

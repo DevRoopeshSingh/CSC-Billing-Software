@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { ipc, IpcError } from "@/lib/ipc";
+import { ipc, IpcError, isBridgeAvailable } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { api, ApiError } from "@/lib/api-client";
 import { API } from "@/lib/api-routes";
@@ -302,7 +302,12 @@ export default function SettingsPage() {
   const [savingPin, setSavingPin] = useState(false);
 
   const [testingPrinter, setTestingPrinter] = useState(false);
+  const [hasBridge, setHasBridge] = useState<boolean | null>(null);
   const isAdmin = useCanAdmin();
+
+  useEffect(() => {
+    setHasBridge(isBridgeAvailable());
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -470,12 +475,14 @@ export default function SettingsPage() {
       // Printer-only fields still live in SQLite (the thermal-print path
       // hasn't migrated yet). In a plain browser this throws — swallow it,
       // there's no printer to configure anyway.
-      await ipc(IPC.CENTER_UPDATE, {
-        printerInterface: form.printerInterface.trim(),
-        printerType: form.printerType,
-      }).catch(() => {
-        /* no electron → no printer config persistence */
-      });
+      if (hasBridge) {
+        await ipc(IPC.CENTER_UPDATE, {
+          printerInterface: form.printerInterface.trim(),
+          printerType: form.printerType,
+        }).catch(() => {
+          /* no electron → no printer config persistence */
+        });
+      }
 
       toast("Settings saved successfully", "success");
     } catch (err) {
@@ -519,6 +526,10 @@ export default function SettingsPage() {
   };
 
   const handleTestPrint = async () => {
+    if (!isBridgeAvailable()) {
+      toast("Printing is only available in the desktop app", "info");
+      return;
+    }
     setTestingPrinter(true);
     try {
       await ipc(IPC.PRINTER_TEST, {
@@ -862,80 +873,87 @@ export default function SettingsPage() {
         title="Printer Settings"
         subtitle="Configure your thermal receipt printer (desktop / Electron only)"
       >
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <FieldLabel required hint="IP or USB">
-                Printer Interface
-              </FieldLabel>
+        {hasBridge === false ? (
+          <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+            <PrinterIcon className="mb-2 h-8 w-8 opacity-20" />
+            <p className="text-sm">Printer settings are only available in the desktop app.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <FieldLabel required hint="IP or USB">
+                  Printer Interface
+                </FieldLabel>
+                <input
+                  type="text"
+                  value={form.printerInterface}
+                  onChange={(e) => set("printerInterface", e.target.value)}
+                  placeholder="tcp://192.168.1.100:9100"
+                  className={inputCls}
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Network: tcp://[IP]:9100 or USB interface string
+                </p>
+              </div>
+              <div>
+                <FieldLabel required>Printer Type</FieldLabel>
+                <select
+                  value={form.printerType}
+                  onChange={(e) => set("printerType", e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="EPSON">EPSON</option>
+                  <option value="STAR">STAR</option>
+                  <option value="BROTHER">BROTHER</option>
+                  <option value="CUSTOM">CUSTOM</option>
+                  <option value="TANCA">TANCA</option>
+                  <option value="DARUMA">DARUMA</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
               <input
-                type="text"
-                value={form.printerInterface}
-                onChange={(e) => set("printerInterface", e.target.value)}
-                placeholder="tcp://192.168.1.100:9100"
-                className={inputCls}
+                type="checkbox"
+                id="printUpiQr"
+                checked={form.printUpiQr}
+                onChange={(e) => set("printUpiQr", e.target.checked)}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
               />
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Network: tcp://[IP]:9100 or USB interface string
-              </p>
-            </div>
-            <div>
-              <FieldLabel required>Printer Type</FieldLabel>
-              <select
-                value={form.printerType}
-                onChange={(e) => set("printerType", e.target.value)}
-                className={inputCls}
+              <label
+                htmlFor="printUpiQr"
+                className="text-sm font-medium text-foreground"
               >
-                <option value="EPSON">EPSON</option>
-                <option value="STAR">STAR</option>
-                <option value="BROTHER">BROTHER</option>
-                <option value="CUSTOM">CUSTOM</option>
-                <option value="TANCA">TANCA</option>
-                <option value="DARUMA">DARUMA</option>
-              </select>
+                Print UPI QR Code on Receipts
+              </label>
+            </div>
+
+            <div className="pt-2 border-t border-border mt-4 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Click test to verify printer connection with current unsaved
+                settings.
+              </p>
+              <button
+                type="button"
+                onClick={handleTestPrint}
+                disabled={testingPrinter}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2",
+                  "text-[13px] font-medium text-foreground transition-colors hover:bg-background",
+                  "disabled:opacity-50"
+                )}
+              >
+                {testingPrinter ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PrinterIcon className="h-4 w-4 text-muted-foreground" />
+                )}
+                {testingPrinter ? "Testing..." : "Test Print"}
+              </button>
             </div>
           </div>
-
-          <div className="flex items-center gap-3 pt-2">
-            <input
-              type="checkbox"
-              id="printUpiQr"
-              checked={form.printUpiQr}
-              onChange={(e) => set("printUpiQr", e.target.checked)}
-              className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-            />
-            <label
-              htmlFor="printUpiQr"
-              className="text-sm font-medium text-foreground"
-            >
-              Print UPI QR Code on Receipts
-            </label>
-          </div>
-
-          <div className="pt-2 border-t border-border mt-4 flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
-              Click test to verify printer connection with current unsaved
-              settings.
-            </p>
-            <button
-              type="button"
-              onClick={handleTestPrint}
-              disabled={testingPrinter}
-              className={cn(
-                "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2",
-                "text-[13px] font-medium text-foreground transition-colors hover:bg-background",
-                "disabled:opacity-50"
-              )}
-            >
-              {testingPrinter ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <PrinterIcon className="h-4 w-4 text-muted-foreground" />
-              )}
-              {testingPrinter ? "Testing..." : "Test Print"}
-            </button>
-          </div>
-        </div>
+        )}
       </SectionCard>
 
       <SectionCard

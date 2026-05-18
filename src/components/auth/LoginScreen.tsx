@@ -6,8 +6,8 @@ import { useAuth } from "@/lib/auth-context";
 import { Loader2, Lock, User, Key, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { cn } from "@/lib/utils";
-import { ipc, IpcError } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -161,7 +161,7 @@ function ResetPasswordModal({
 
     setLoading(true);
     try {
-      await ipc(IPC.USERS_RESET_PASSWORD_BY_PIN, {
+      await api.post(API.AUTH_RESET_PASSWORD, {
         username: username.trim(),
         adminPin,
         newPassword,
@@ -170,7 +170,7 @@ function ResetPasswordModal({
       onClose();
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Reset failed",
+        err instanceof ApiError ? err.message : "Reset failed",
         "error"
       );
     } finally {

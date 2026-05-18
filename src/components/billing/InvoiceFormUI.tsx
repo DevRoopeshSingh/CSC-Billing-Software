@@ -558,7 +558,7 @@ export function InvoiceFormUI({
                 </>
               )}
             </button>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={cn("grid gap-3", onPreview ? "grid-cols-2" : "grid-cols-1")}>
               <button
                 type="button"
                 disabled={actionLoading !== null}

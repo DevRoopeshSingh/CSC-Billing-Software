@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
-import { ipc, IpcError } from "@/lib/ipc";
+import { ipc, IpcError, isBridgeAvailable } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { api, ApiError } from "@/lib/api-client";
 import { API } from "@/lib/api-routes";
@@ -72,6 +72,11 @@ export default function InvoiceDetailPage() {
   const [busy, setBusy] = useState<"status" | "pdf" | "print" | "delete" | null>(
     null
   );
+  const [hasBridge, setHasBridge] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setHasBridge(isBridgeAvailable());
+  }, []);
 
   const load = useCallback(async () => {
     if (invoiceId === null) {
@@ -140,6 +145,10 @@ export default function InvoiceDetailPage() {
 
   const onDownloadPdf = async () => {
     if (!invoice?.id) return;
+    if (!isBridgeAvailable()) {
+      toast("PDF download is only available in the desktop app", "info");
+      return;
+    }
     setBusy("pdf");
     try {
       const res = await ipc<{ path?: string }>(
@@ -162,6 +171,10 @@ export default function InvoiceDetailPage() {
 
   const onPrint = async () => {
     if (!invoice?.id) return;
+    if (!isBridgeAvailable()) {
+      toast("Direct printing is only available in the desktop app", "info");
+      return;
+    }
     setBusy("print");
     try {
       await ipc(IPC.PRINTER_PRINT_RECEIPT, invoice.id);
@@ -331,11 +344,14 @@ export default function InvoiceDetailPage() {
 
           <button
             type="button"
-            onClick={onDownloadPdf}
+            onClick={hasBridge === false ? undefined : onDownloadPdf}
             disabled={busy !== null}
+            aria-disabled={hasBridge === false}
+            title={hasBridge === false ? "Only available in desktop app" : undefined}
             className={cn(
               actionBtn,
-              "border-border bg-card text-foreground hover:bg-background"
+              "border-border bg-card text-foreground",
+              hasBridge === false ? "opacity-60 cursor-not-allowed" : "hover:bg-background"
             )}
           >
             {busy === "pdf" ? (
@@ -348,11 +364,14 @@ export default function InvoiceDetailPage() {
 
           <button
             type="button"
-            onClick={onPrint}
+            onClick={hasBridge === false ? undefined : onPrint}
             disabled={busy !== null}
+            aria-disabled={hasBridge === false}
+            title={hasBridge === false ? "Only available in desktop app" : undefined}
             className={cn(
               actionBtn,
-              "border-border bg-card text-foreground hover:bg-background"
+              "border-border bg-card text-foreground",
+              hasBridge === false ? "opacity-60 cursor-not-allowed" : "hover:bg-background"
             )}
           >
             {busy === "print" ? (

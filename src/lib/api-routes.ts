@@ -36,4 +36,16 @@ export const API = {
 
   REPORTS_SUMMARY: "/api/reports/summary",
   REPORTS_PENDING_DUES: "/api/reports/pending-dues",
+  REPORTS_TOP_CUSTOMERS: "/api/reports/top-customers",
+  REPORTS_TOP_SERVICES: "/api/reports/top-services",
+  REPORTS_RANGE: "/api/reports/range",
+
+  USERS: "/api/users",
+  USER: (id: number) => `/api/users/${id}`,
+  USER_PASSWORD: (id: number) => `/api/users/${id}/password`,
+
+  AUTH_RESET_PASSWORD: "/api/auth/reset-password",
+
+  SERVICES_IMPORT_CSV: "/api/services/import-csv",
+  SERVICES_LOAD_SEED: "/api/services/load-seed",
 } as const;

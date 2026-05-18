@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ipc, IpcError } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import type { ServicesImportResult } from "@/shared/types";
 import { CheckCircle2, FileSpreadsheet, Info, X } from "lucide-react";
@@ -48,14 +48,14 @@ export function ImportCsvDialog({ open, onClose, onCommitted }: Props) {
     setCsv(text);
     setStage("previewing");
     try {
-      const result = await ipc<ServicesImportResult>(IPC.SERVICES_IMPORT_CSV, {
+      const result = await api.post<ServicesImportResult>(API.SERVICES_IMPORT_CSV, {
         csv: text,
         mode: "preview",
       });
       setPreview(result);
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to read CSV",
+        err instanceof ApiError ? err.message : "Failed to read CSV",
         "error"
       );
       setStage("picking");
@@ -65,7 +65,7 @@ export function ImportCsvDialog({ open, onClose, onCommitted }: Props) {
   const commit = async () => {
     setStage("committing");
     try {
-      const result = await ipc<ServicesImportResult>(IPC.SERVICES_IMPORT_CSV, {
+      const result = await api.post<ServicesImportResult>(API.SERVICES_IMPORT_CSV, {
         csv,
         mode: "commit",
       });
@@ -77,7 +77,7 @@ export function ImportCsvDialog({ open, onClose, onCommitted }: Props) {
       close();
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Import failed",
+        err instanceof ApiError ? err.message : "Import failed",
         "error"
       );
       setStage("previewing");

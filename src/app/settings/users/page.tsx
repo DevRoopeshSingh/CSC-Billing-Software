@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useCanAdmin } from "@/lib/permissions";
 import { User, UserRole } from "@/shared/types";
-import { ipc, IpcError } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import { Plus, Shield, User as UserIcon, Trash2, Key, Loader2, Edit2, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -36,7 +36,7 @@ export default function UsersSettingsPage() {
 
   const loadUsers = async () => {
     try {
-      const data = await ipc<User[]>(IPC.USERS_LIST);
+      const data = await api.get<User[]>(API.USERS);
       setUsers(data);
     } catch (err: any) {
       toast("Failed to load users", "error");
@@ -51,7 +51,7 @@ export default function UsersSettingsPage() {
       return;
     }
     try {
-      await ipc(IPC.USERS_UPDATE, targetUser.id, { isActive: !targetUser.isActive });
+      await api.patch(API.USER(targetUser.id!), { isActive: !targetUser.isActive });
       toast(`User ${targetUser.username} ${!targetUser.isActive ? 'activated' : 'disabled'}`, "success");
       loadUsers();
     } catch (err: any) {
@@ -179,7 +179,7 @@ function AddUserModal({ onClose, onAdded }: { onClose: () => void, onAdded: () =
     }
     setLoading(true);
     try {
-      await ipc(IPC.USERS_CREATE, formData);
+      await api.post(API.USERS, formData);
       toast("User created successfully", "success");
       onAdded();
       onClose();
@@ -264,7 +264,7 @@ function ChangePasswordModal({ userId, onClose }: { userId: number, onClose: () 
     }
     setLoading(true);
     try {
-      await ipc(IPC.USERS_CHANGE_PASSWORD, { userId, newPassword: password });
+      await api.post(API.USER_PASSWORD(userId), { newPassword: password });
       toast("Password updated successfully", "success");
       onClose();
     } catch (err: any) {

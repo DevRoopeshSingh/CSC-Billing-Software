@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ipc } from "@/lib/ipc";
+import { ipc, isBridgeAvailable } from "@/lib/ipc";
 import { IPC } from "@/shared/ipc-channels";
 import { api, ApiError } from "@/lib/api-client";
 import { API } from "@/lib/api-routes";
@@ -19,7 +19,7 @@ import {
   useInvoiceTotals,
   buildInvoicePayload,
 } from "@/components/billing/useInvoiceState";
-import { Lock } from "lucide-react";
+import { Lock, Loader2 } from "lucide-react";
 
 function NewInvoiceContent() {
   const router = useRouter();
@@ -32,6 +32,11 @@ function NewInvoiceContent() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [actionLoading, setActionLoading] = useState<"save" | "draft" | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [hasBridge, setHasBridge] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setHasBridge(isBridgeAvailable());
+  }, []);
 
   const { state, actions } = useInvoiceState();
   const totals = useInvoiceTotals(state.lineItems, state.discount);
@@ -117,6 +122,10 @@ function NewInvoiceContent() {
 
   const handlePreview = async () => {
     if (previewing) return;
+    if (!isBridgeAvailable()) {
+      toast("PDF preview is only available in the desktop app", "info");
+      return;
+    }
     setPreviewing(true);
     try {
       // Same payload shape as save — buildInvoicePayload throws if customer
@@ -148,6 +157,14 @@ function NewInvoiceContent() {
     );
   }
 
+  if (hasBridge === null) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <InvoiceFormUI
       mode="create"
@@ -159,7 +176,7 @@ function NewInvoiceContent() {
       customerSearch={customerSearch}
       setCustomerSearch={setCustomerSearch}
       onSubmit={handleSubmit}
-      onPreview={handlePreview}
+      onPreview={hasBridge ? handlePreview : undefined}
       actionLoading={actionLoading}
     />
   );

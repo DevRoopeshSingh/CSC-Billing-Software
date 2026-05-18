@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ToastProvider } from "@/components/Toast";
+import { isBridgeAvailable } from "@/lib/ipc";
 
 import {
   LayoutDashboard,
@@ -43,11 +44,13 @@ import { LogOut } from "lucide-react";
 function SidebarNav() {
   const pathname = usePathname();
   const [isOnline, setIsOnline] = useState(true);
+  const [hasBridge, setHasBridge] = useState(false);
   const { user } = useAuth();
   const { isSidebarOpen, isSidebarCollapsed, closeSidebar } = useSidebar();
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
+    setHasBridge(isBridgeAvailable());
     const on = () => setIsOnline(true);
     const off = () => setIsOnline(false);
     window.addEventListener("online", on);
@@ -87,7 +90,7 @@ function SidebarNav() {
       label: "System",
       items: [
         { href: "/settings/users", label: "Users & Roles", icon: UserCog, roles: ["admin"] },
-        { href: "/settings/backup", label: "Backup", icon: HardDrive, roles: ["admin"] },
+        ...(hasBridge ? [{ href: "/settings/backup", label: "Backup", icon: HardDrive, roles: ["admin"] }] : []),
         { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] },
       ],
     },

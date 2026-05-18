@@ -2,7 +2,7 @@
 // Report handlers — direct port of the REPORTS_* safeHandle blocks from the
 // old Electron main process. Queries run against Postgres via Drizzle.
 
-import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
+import { and, eq, gte, lte, ne, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../db";
 
@@ -31,6 +31,12 @@ export const reportSummaryInputSchema = z.object({
 });
 
 export type ReportSummaryInput = z.infer<typeof reportSummaryInputSchema>;
+
+export const topNSchema = z.object({
+  start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  limit: z.coerce.number().int().positive().max(50).default(5),
+});
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -95,4 +101,92 @@ export async function getPendingDues(): Promise<PendingDues> {
     count: Number(row?.count ?? 0),
     total: Number(row?.total ?? 0),
   };
+}
+
+export async function getTopCustomers(input: z.infer<typeof topNSchema>) {
+  const db = getDb();
+  const startDate = new Date(`${input.start}T00:00:00.000Z`);
+  const endDate = new Date(`${input.end}T23:59:59.999Z`);
+  const limit = input.limit ?? 5;
+
+  const revenueExpr = sql<number>`COALESCE(SUM(${schema.invoices.total}), 0)`
+    .mapWith(Number)
+    .as("revenue");
+
+  return db
+    .select({
+      customerId: schema.customers.id,
+      customerName: schema.customers.name,
+      invoiceCount: sql<number>`COUNT(${schema.invoices.id})`.mapWith(Number),
+      revenue: revenueExpr,
+    })
+    .from(schema.invoices)
+    .innerJoin(
+      schema.customers,
+      eq(schema.invoices.customerId, schema.customers.id)
+    )
+    .where(
+      and(
+        gte(schema.invoices.createdAt, startDate),
+        lte(schema.invoices.createdAt, endDate),
+        ne(schema.invoices.status, "CANCELLED")
+      )
+    )
+    .groupBy(schema.customers.id)
+    .orderBy(desc(revenueExpr))
+    .limit(limit);
+}
+
+export async function getTopServices(input: z.infer<typeof topNSchema>) {
+  const db = getDb();
+  const startDate = new Date(`${input.start}T00:00:00.000Z`);
+  const endDate = new Date(`${input.end}T23:59:59.999Z`);
+  const limit = input.limit ?? 5;
+
+  const revenueExpr = sql<number>`COALESCE(SUM(${schema.invoiceItems.lineTotal}), 0)`
+    .mapWith(Number)
+    .as("revenue");
+
+  return db
+    .select({
+      serviceId: schema.services.id,
+      serviceName: schema.services.name,
+      category: schema.services.category,
+      qty: sql<number>`COALESCE(SUM(${schema.invoiceItems.qty}), 0)`.mapWith(Number),
+      revenue: revenueExpr,
+    })
+    .from(schema.invoiceItems)
+    .innerJoin(
+      schema.invoices,
+      eq(schema.invoiceItems.invoiceId, schema.invoices.id)
+    )
+    .innerJoin(
+      schema.services,
+      eq(schema.invoiceItems.serviceId, schema.services.id)
+    )
+    .where(
+      and(
+        gte(schema.invoices.createdAt, startDate),
+        lte(schema.invoices.createdAt, endDate),
+        ne(schema.invoices.status, "CANCELLED")
+      )
+    )
+    .groupBy(schema.services.id)
+    .orderBy(desc(revenueExpr))
+    .limit(limit);
+}
+
+export async function getInvoicesByRange(input: z.infer<typeof reportSummaryInputSchema>) {
+  const db = getDb();
+  const startDate = new Date(`${input.start}T00:00:00.000Z`);
+  const endDate = new Date(`${input.end}T23:59:59.999Z`);
+
+  return db.query.invoices.findMany({
+    where: and(
+      gte(schema.invoices.createdAt, startDate),
+      lte(schema.invoices.createdAt, endDate)
+    ),
+    with: { customer: true, items: true },
+    orderBy: [desc(schema.invoices.createdAt)],
+  });
 }

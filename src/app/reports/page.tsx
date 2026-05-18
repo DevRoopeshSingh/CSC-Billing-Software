@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/formatters";
-import { ipc, IpcError } from "@/lib/ipc";
-import { IPC } from "@/shared/ipc-channels";
+import { api, ApiError } from "@/lib/api-client";
+import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import {
   buildCsv,
@@ -180,10 +180,10 @@ export default function ReportsPage() {
     setLoading(true);
     try {
       const [s, tc, ts, pd] = await Promise.all([
-        ipc<ReportSummary>(IPC.REPORTS_SUMMARY, range),
-        ipc<TopCustomer[]>(IPC.REPORTS_TOP_CUSTOMERS, { ...range, limit: 5 }),
-        ipc<TopService[]>(IPC.REPORTS_TOP_SERVICES, { ...range, limit: 5 }),
-        ipc<PendingDues>(IPC.REPORTS_PENDING_DUES),
+        api.get<ReportSummary>(`${API.REPORTS_SUMMARY}?start=${range.start}&end=${range.end}`),
+        api.get<TopCustomer[]>(`${API.REPORTS_TOP_CUSTOMERS}?start=${range.start}&end=${range.end}&limit=5`),
+        api.get<TopService[]>(`${API.REPORTS_TOP_SERVICES}?start=${range.start}&end=${range.end}&limit=5`),
+        api.get<PendingDues>(API.REPORTS_PENDING_DUES),
       ]);
       setSummary(s);
       setTopCustomers(tc ?? []);
@@ -191,7 +191,7 @@ export default function ReportsPage() {
       setPendingDues(pd ?? { count: 0, total: 0 });
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to load reports",
+        err instanceof ApiError ? err.message : "Failed to load reports",
         "error"
       );
     } finally {
@@ -225,10 +225,8 @@ export default function ReportsPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const rows = (await ipc<RangeInvoice[]>(
-        IPC.REPORTS_RANGE,
-        range.start,
-        range.end
+      const rows = (await api.get<RangeInvoice[]>(
+        `${API.REPORTS_RANGE}?start=${range.start}&end=${range.end}`
       )) ?? [];
       if (rows.length === 0) {
         toast("No invoices in this range to export", "info");
@@ -265,7 +263,7 @@ export default function ReportsPage() {
       }
     } catch (err) {
       toast(
-        err instanceof IpcError ? err.message : "Failed to export CSV",
+        err instanceof ApiError ? err.message : "Failed to export CSV",
         "error"
       );
     } finally {
