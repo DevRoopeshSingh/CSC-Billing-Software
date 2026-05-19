@@ -75,7 +75,7 @@ export async function setupAdmin(data: SetupRequest): Promise<AuthSuccess> {
   });
 
   const role = created.role as Role;
-  const token = createSession(created.id, role);
+  const token = await createSession(created.id, role);
   return {
     token,
     user: { id: created.id, username: created.username, role },
@@ -102,7 +102,7 @@ export async function login(data: LoginRequest): Promise<AuthSuccess> {
   }
   clearLoginFailures(data.username);
   const role = user.role as Role;
-  const token = createSession(user.id, role);
+  const token = await createSession(user.id, role);
   return {
     token,
     user: { id: user.id, username: user.username, role },

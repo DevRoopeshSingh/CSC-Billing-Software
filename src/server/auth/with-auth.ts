@@ -88,9 +88,9 @@ export function withAuth<TBody extends z.ZodTypeAny | undefined = undefined>(
         return jsonError("Bad origin", 403, "BAD_ORIGIN");
       }
 
-      // Session resolution (cookie → in-memory store → DB-validated downstream).
+      // Session resolution (cookie → stateless JWT decode).
       const sessionCookie = req.cookies.get(SESSION_COOKIE)?.value ?? null;
-      const session = sessionCookie ? getSession(sessionCookie) : null;
+      const session = sessionCookie ? await getSession(sessionCookie) : null;
 
       if (options.access.auth === "session") {
         if (!session) return jsonError("Not authenticated", 401, "UNAUTHENTICATED");

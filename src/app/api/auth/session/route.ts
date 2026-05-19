@@ -14,7 +14,7 @@ import { resumeSessionFromStore } from "@/server/handlers/auth";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const token = req.cookies.get(SESSION_COOKIE)?.value ?? null;
-  const s = getSession(token);
+  const s = await getSession(token);
   if (!token || !s) {
     const res = NextResponse.json({ user: null });
     if (token) clearAuthCookies(res);
