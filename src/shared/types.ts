@@ -110,6 +110,13 @@ export const centerProfileSchema = z.object({
   whatsappEnabled: z.boolean().default(false),
   whatsappApiToken: z.string().nullable().default(null),
   whatsappPhoneId: z.string().nullable().default(null),
+  cloudBackupEnabled: z.boolean().default(false),
+  s3Endpoint: z.string().nullable().default(null),
+  s3AccessKey: z.string().nullable().default(null),
+  s3SecretKey: z.string().nullable().default(null),
+  s3Bucket: z.string().nullable().default(null),
+  backupEncryptionKey: z.string().nullable().default(null),
+  cronSecret: z.string().nullable().default(null),
 });
 
 export type CenterProfile = z.infer<typeof centerProfileSchema>;

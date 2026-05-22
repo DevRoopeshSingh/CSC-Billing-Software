@@ -62,6 +62,7 @@
     }
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1052.0",
     "adm-zip": "^0.5.17",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.9.0",

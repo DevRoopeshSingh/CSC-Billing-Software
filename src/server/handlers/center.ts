@@ -36,6 +36,13 @@ export interface CenterProfileShape {
   whatsappEnabled: boolean;
   whatsappApiToken: string | null;
   whatsappPhoneId: string | null;
+  cloudBackupEnabled: boolean;
+  s3Endpoint: string | null;
+  s3AccessKey: string | null;
+  s3SecretKey: string | null;
+  s3Bucket: string | null;
+  backupEncryptionKey: string | null;
+  cronSecret: string | null;
 }
 
 function serializeCenter(row: CenterRow): CenterProfileShape {
@@ -64,6 +71,13 @@ function serializeCenter(row: CenterRow): CenterProfileShape {
     whatsappEnabled: row.whatsappEnabled,
     whatsappApiToken: row.whatsappApiToken,
     whatsappPhoneId: row.whatsappPhoneId,
+    cloudBackupEnabled: row.cloudBackupEnabled,
+    s3Endpoint: row.s3Endpoint,
+    s3AccessKey: row.s3AccessKey,
+    s3SecretKey: row.s3SecretKey,
+    s3Bucket: row.s3Bucket,
+    backupEncryptionKey: row.backupEncryptionKey,
+    cronSecret: row.cronSecret,
   };
 }
 
@@ -96,6 +110,16 @@ export const centerUpdateInputSchema = z
     operatingHours: z.string().max(200).optional(),
     centerDescription: z.string().max(500).optional(),
     printUpiQr: z.boolean().optional(),
+    whatsappEnabled: z.boolean().optional(),
+    whatsappApiToken: z.string().nullable().optional(),
+    whatsappPhoneId: z.string().nullable().optional(),
+    cloudBackupEnabled: z.boolean().optional(),
+    s3Endpoint: z.string().nullable().optional(),
+    s3AccessKey: z.string().nullable().optional(),
+    s3SecretKey: z.string().nullable().optional(),
+    s3Bucket: z.string().nullable().optional(),
+    backupEncryptionKey: z.string().nullable().optional(),
+    cronSecret: z.string().nullable().optional(),
   })
   .strict();
 export type CenterUpdateInput = z.infer<typeof centerUpdateInputSchema>;

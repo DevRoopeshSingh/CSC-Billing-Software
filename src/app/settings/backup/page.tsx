@@ -94,16 +94,46 @@ export default function BackupPage() {
 
   if (hasBridge === false) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center p-6 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 mb-6 shadow-sm border border-blue-100">
-          <Cloud className="h-8 w-8" />
+      <div className="space-y-6">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-foreground">
+              Cloud Database Export
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure and trigger automated encrypted backups to S3-compatible storage.
+            </p>
+          </div>
         </div>
-        <h2 className="text-xl font-semibold text-foreground mb-2">Cloud Connected</h2>
-        <p className="max-w-md text-sm text-muted-foreground leading-relaxed">
-          Your database is securely hosted in the cloud via PostgreSQL and is automatically backed up by the cloud provider.
-          <br /><br />
-          Manual local <code className="bg-muted px-1 py-0.5 rounded text-[11px]">.db</code> file exports are only required and available when using the legacy offline desktop app.
-        </p>
+
+        <div className="flex min-h-[30vh] flex-col items-center justify-center p-6 text-center rounded-xl border border-border bg-card">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 mb-6 shadow-sm border border-blue-100">
+            <Cloud className="h-8 w-8" />
+          </div>
+          <h2 className="text-xl font-semibold text-foreground mb-2">Cloud Connected Database</h2>
+          <p className="max-w-md text-sm text-muted-foreground leading-relaxed">
+            Your primary database is securely hosted via PostgreSQL.
+            <br /><br />
+            To configure automated snapshots to your own S3 bucket, please edit your Center Profile settings to include your S3 credentials and Encryption Key. Once configured, you can trigger a sync manually or via cron.
+          </p>
+          <button
+            onClick={async () => {
+              try {
+                toast("Triggering cloud sync...", "info");
+                const res = await fetch("/api/settings/backup/cloud-sync", { method: "POST" });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || "Failed to sync");
+                toast(`Backup successful: ${data.filename}`, "success");
+              } catch (err: any) {
+                toast(err.message, "error");
+              }
+            }}
+            className="mt-6 flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
+          >
+            <Cloud className="h-4 w-4" />
+            Run Cloud Sync Now
+          </button>
+        </div>
       </div>
     );
   }

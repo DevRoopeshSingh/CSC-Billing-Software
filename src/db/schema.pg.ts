@@ -63,6 +63,13 @@ export const centerProfiles = pgTable("center_profiles", {
   whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false),
   whatsappApiToken: text("whatsapp_api_token"),
   whatsappPhoneId: text("whatsapp_phone_id"),
+  cloudBackupEnabled: boolean("cloud_backup_enabled").notNull().default(false),
+  s3Endpoint: text("s3_endpoint"),
+  s3AccessKey: text("s3_access_key"),
+  s3SecretKey: text("s3_secret_key"),
+  s3Bucket: text("s3_bucket"),
+  backupEncryptionKey: text("backup_encryption_key"),
+  cronSecret: text("cron_secret"),
 });
 
 export const services = pgTable("services", {
