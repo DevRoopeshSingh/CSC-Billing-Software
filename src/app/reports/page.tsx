@@ -299,7 +299,7 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 pb-10">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Reports</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -325,14 +325,14 @@ export default function ReportsPage() {
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm">
-        <div className="flex gap-1 rounded-lg border border-border bg-background p-1">
+      <div className="flex flex-col md:flex-row md:items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm">
+        <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-background p-1">
           {presetButton("today", "Today")}
           {presetButton("yesterday", "Yesterday")}
           {presetButton("last7", "Last 7 days")}
           {presetButton("thisMonth", "This Month")}
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="md:ml-auto flex flex-wrap items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
           <input
             type="date"
@@ -482,7 +482,20 @@ export default function ReportsPage() {
                   No customers billed in this range.
                 </p>
               ) : (
-                <table className="w-full text-sm">
+                <>
+                  <div className="block md:hidden p-5 flex flex-col gap-4">
+                    {topCustomers.map((c) => (
+                      <div key={c.customerId} className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0 last:pb-0">
+                        <div>
+                          <Link href={`/invoices?customerId=${c.customerId}`} className="font-medium text-primary hover:underline">{c.customerName}</Link>
+                          <p className="text-xs text-muted-foreground mt-0.5">{c.invoiceCount} invoices</p>
+                        </div>
+                        <div className="font-semibold text-emerald-600 text-right">{formatCurrency(c.revenue)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       <th className="px-5 py-2.5">Customer</th>
@@ -514,8 +527,10 @@ export default function ReportsPage() {
                     ))}
                   </tbody>
                 </table>
-              )}
-            </div>
+              </div>
+            </>
+            )}
+          </div>
 
             <div className="rounded-xl border border-border bg-card shadow-sm">
               <div className="border-b border-border px-5 py-3">
@@ -528,7 +543,20 @@ export default function ReportsPage() {
                   No services billed in this range.
                 </p>
               ) : (
-                <table className="w-full text-sm">
+                <>
+                  <div className="block md:hidden p-5 flex flex-col gap-4">
+                    {topServices.map((s) => (
+                      <div key={s.serviceId} className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0 last:pb-0">
+                        <div>
+                          <p className="font-medium text-foreground">{s.serviceName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{s.category} · Qty: {s.qty}</p>
+                        </div>
+                        <div className="font-semibold text-emerald-600 text-right">{formatCurrency(s.revenue)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       <th className="px-5 py-2.5">Service</th>
@@ -560,8 +588,10 @@ export default function ReportsPage() {
                     ))}
                   </tbody>
                 </table>
-              )}
-            </div>
+              </div>
+            </>
+            )}
+          </div>
           </div>
         </div>
       )}

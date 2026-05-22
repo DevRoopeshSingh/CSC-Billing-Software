@@ -176,14 +176,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-foreground">{greeting}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Today at a glance.
           </p>
         </div>
-        <div className="flex gap-2.5">
+        <div className="flex flex-wrap gap-2.5">
           <Link
             href="/reports"
             className={cn(
@@ -274,8 +274,36 @@ export default function DashboardPage() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <>
+            {/* Mobile Card View */}
+            <div className="block md:hidden">
+              <div className="flex flex-col divide-y divide-border/50">
+                {recent.map((inv) => (
+                  <div key={inv.id} className="flex flex-col gap-2 p-4 hover:bg-background/60 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <Link
+                        href={`/invoices/${inv.id}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {inv.invoiceNo}
+                      </Link>
+                      <StatusBadge status={inv.status} />
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-foreground">{inv.customerName}</span>
+                      <span className="font-semibold text-foreground">{formatCurrency(inv.total)}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatDate(inv.createdAt)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -324,8 +352,9 @@ export default function DashboardPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

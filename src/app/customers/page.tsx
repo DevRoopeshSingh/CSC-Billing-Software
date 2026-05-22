@@ -174,14 +174,14 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Customers</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {loading ? "Loading..." : `${customers.length} registered customers`}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           {canWrite && (
             <Link
               href="/billing/new"
@@ -208,7 +208,7 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <div className="relative max-w-md">
+      <div className="relative max-w-md w-full">
         <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
@@ -236,8 +236,110 @@ export default function CustomersPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <>
+            {/* Mobile Card View */}
+            <div className="block md:hidden">
+              <div className="flex flex-col divide-y divide-border/50">
+                {customers.map((c) => (
+                  <div key={c.id} className="flex flex-col gap-3 p-4 hover:bg-background/60 transition-colors">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={cn(
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+                            "bg-primary/10 text-base font-semibold text-primary"
+                          )}
+                        >
+                          {c.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <Link 
+                            href={`/invoices?customerId=${c.id}`}
+                            className="font-semibold text-foreground hover:text-primary hover:underline text-base"
+                          >
+                            {c.name}
+                          </Link>
+                          {c.mobile ? (
+                            <span className="flex items-center gap-1.5 text-muted-foreground text-sm mt-0.5">
+                              <Phone className="h-3.5 w-3.5" />
+                              {c.mobile}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-sm mt-0.5 block">No mobile</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      {c.tags && c.tags.split(",").filter(Boolean).map((tag) => (
+                        <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                          <Tag className="h-2.5 w-2.5" />
+                          {tag.trim()}
+                        </span>
+                      ))}
+                      {c.remarks && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                          <MessageSquare className="h-2.5 w-2.5" />
+                          {c.remarks}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-border pt-3 mt-1">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Billed</span>
+                        <span className="font-semibold text-emerald-600 text-[13px]">₹{(c.totalBilled ?? 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        {canWrite && (
+                          <>
+                            <Link
+                              href={`/billing/new?customerId=${c.id}`}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg border border-border p-2",
+                                "text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                              )}
+                              title="New Bill"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(c)}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg border border-border p-2",
+                                "text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                              )}
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(c)}
+                              disabled={deletingId === c.id}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 p-2",
+                                "text-red-700 transition-colors hover:bg-red-100",
+                                "disabled:opacity-50"
+                              )}
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -353,25 +455,25 @@ export default function CustomersPage() {
                               type="button"
                               onClick={() => openEdit(c)}
                               className={cn(
-                                "inline-flex items-center gap-1 rounded-lg border border-border p-1.5",
+                                "inline-flex items-center gap-1 rounded-lg border border-border p-2",
                                 "text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                               )}
                               title="Edit"
                             >
-                              <Pencil className="h-3.5 w-3.5" />
+                              <Pencil className="h-4 w-4" />
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDelete(c)}
                               disabled={deletingId === c.id}
                               className={cn(
-                                "inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 p-1.5",
+                                "inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 p-2",
                                 "text-red-700 transition-colors hover:bg-red-100",
                                 "disabled:opacity-50"
                               )}
                               title="Delete"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </>
                         )}
@@ -380,8 +482,9 @@ export default function CustomersPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </>
         )}
       </div>
 

@@ -114,7 +114,7 @@ function InvoicesContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Invoices</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -123,7 +123,7 @@ function InvoicesContent() {
               : `${filtered.length} invoices | ${paidCount} paid | ${pendingCount} pending`}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button
             type="button"
             onClick={() => {
@@ -254,7 +254,7 @@ function InvoicesContent() {
           </select>
           <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         </div>
-        <div>
+        <div className="flex items-center gap-2">
           <input
             type="date"
             value={startDate}
@@ -264,9 +264,7 @@ function InvoicesContent() {
               "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             )}
           />
-        </div>
-        <span className="text-xs text-muted-foreground">to</span>
-        <div>
+          <span className="text-xs text-muted-foreground">to</span>
           <input
             type="date"
             value={endDate}
@@ -309,8 +307,81 @@ function InvoicesContent() {
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <>
+            {/* Mobile Card View */}
+            <div className="block md:hidden">
+              <div className="flex flex-col divide-y divide-border/50">
+                {filtered.map((inv) => (
+                  <div key={inv.id} className="flex flex-col gap-3 p-4 hover:bg-background/60 transition-colors">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="font-semibold text-foreground">{inv.invoiceNo}</span>
+                        <div className="text-xs text-muted-foreground">
+                          {inv.createdAt ? formatDate(inv.createdAt) : "—"}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-semibold text-foreground">{formatCurrency(inv.total)}</span>
+                        <div className="mt-1">
+                          <span className="inline-flex rounded-full border border-border bg-background px-2.5 py-0.5 text-[10px] font-medium text-foreground">
+                            {inv.paymentMode}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="font-medium text-foreground">{inv.customer?.name ?? "—"}</p>
+                      {inv.customer?.mobile && (
+                        <p className="text-xs text-muted-foreground">{inv.customer.mobile}</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between mt-1">
+                      <div className="relative inline-block">
+                        <select
+                          value={inv.status}
+                          disabled={!canWrite}
+                          onChange={(e) =>
+                            updateStatus(
+                              inv.id!,
+                              e.target.value as "PAID" | "PENDING" | "CANCELLED"
+                            )
+                          }
+                          className={cn(
+                            "appearance-none rounded-full border px-4 py-2 pr-8 text-[12px] font-semibold",
+                            "focus:outline-none focus:ring-2 focus:ring-primary/20",
+                            inv.status === "PAID"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : inv.status === "PENDING"
+                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                : "border-red-200 bg-red-50 text-red-700"
+                          )}
+                        >
+                          <option value="PAID">PAID</option>
+                          <option value="PENDING">PENDING</option>
+                          <option value="CANCELLED">CANCELLED</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" />
+                      </div>
+
+                      <Link
+                        href={`/invoices/${inv.id}`}
+                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                        title="View"
+                      >
+                        <Eye className="h-4 w-4" />
+                        View
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -405,18 +476,19 @@ function InvoicesContent() {
                       <div className="flex items-center justify-center gap-1.5">
                         <Link
                           href={`/invoices/${inv.id}`}
-                          className="rounded-lg border border-border p-1.5 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                          className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                           title="View"
                         >
-                          <Eye className="h-3.5 w-3.5" />
+                          <Eye className="h-4 w-4" />
                         </Link>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

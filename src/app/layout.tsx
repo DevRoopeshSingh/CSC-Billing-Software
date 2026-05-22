@@ -278,7 +278,7 @@ function TopBar() {
   return (
     <header
       className={cn(
-        "flex h-16 shrink-0 items-center justify-between border-b border-border px-8",
+        "flex h-16 shrink-0 items-center justify-between border-b border-border px-4 md:px-8",
         "bg-surface [-webkit-app-region:drag]"
       )}
     >
@@ -300,7 +300,7 @@ function TopBar() {
         {/* Search */}
         <button
           className={cn(
-            "flex items-center gap-2.5 rounded-full border border-border bg-background px-4 py-2",
+            "hidden md:flex items-center gap-2.5 rounded-full border border-border bg-background px-4 py-2",
             "text-[13px] text-muted-foreground transition-colors hover:border-primary"
           )}
           style={{ width: 220 }}
@@ -330,26 +330,27 @@ function TopBar() {
           <Link
             href="/billing/new"
             className={cn(
-              "flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5",
+              "flex items-center justify-center gap-2 rounded-lg bg-primary w-9 h-9 md:w-auto md:h-auto md:px-4 md:py-2.5",
               "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
             )}
+            title="New Invoice"
           >
-            <Plus className="h-4 w-4" />
-            New Invoice
+            <Plus className="h-5 w-5 md:h-4 md:w-4" />
+            <span className="hidden md:inline">New Invoice</span>
           </Link>
         )}
 
         {/* Avatar & User */}
-        <div className="ml-1 flex items-center gap-2.5 border-l border-border pl-4">
+        <div className="ml-1 flex items-center gap-1.5 md:gap-2.5 border-l border-border pl-3 md:pl-4">
           <div
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-full bg-primary",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary",
               "text-sm font-semibold text-white uppercase"
             )}
           >
             {user?.username.charAt(0)}
           </div>
-          <div className="flex flex-col">
+          <div className="hidden md:flex flex-col">
             <span className="text-[13px] font-semibold text-foreground">
               {user?.username}
             </span>
@@ -361,7 +362,7 @@ function TopBar() {
           {/* Logout */}
           <button 
             onClick={logout}
-            className="ml-2 text-muted-foreground hover:text-foreground transition-colors"
+            className="md:ml-2 p-2 text-muted-foreground hover:text-foreground transition-colors"
             title="Log out"
           >
             <LogOut className="h-4 w-4" />
@@ -399,7 +400,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       >
         <TopBar />
 
-        <main className="flex-1 overflow-y-auto bg-background p-7">
+        <main className="flex-1 overflow-y-auto bg-background p-4 md:p-7">
           <div className="mx-auto max-w-7xl">{children}</div>
         </main>
       </div>
