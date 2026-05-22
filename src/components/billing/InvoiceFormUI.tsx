@@ -30,6 +30,7 @@ interface InvoiceFormUIProps {
     setDiscount: (v: number) => void;
     setAdvancePayment: (v: number) => void;
     setSendWhatsApp: (v: boolean) => void;
+    setSendSms: (v: boolean) => void;
     setPointsRedeemed: (v: number) => void;
     setPaymentMode: (v: "Cash" | "UPI" | "Card" | "Other") => void;
     setNotes: (v: string) => void;
@@ -41,7 +42,7 @@ interface InvoiceFormUIProps {
     removeRow: (key: number) => void;
     handleServiceSelect: (key: number, serviceId: number, services: Service[]) => void;
   };
-  totals: { subtotal: number; taxTotal: number; total: number };
+  totals: { subtotal: number; taxTotal: number; total: number; govTotal?: number };
   services: Service[];
   customers: Customer[];
   customerSearch: string;
@@ -375,6 +376,12 @@ export function InvoiceFormUI({
                   Rate
                 </th>
                 <th
+                  className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                  style={{ width: 100 }}
+                >
+                  Govt. Charge
+                </th>
+                <th
                   className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                   style={{ width: 100 }}
                 >
@@ -392,8 +399,9 @@ export function InvoiceFormUI({
             <tbody>
               {state.lineItems.map((row) => {
                 const lineBase = row.qty * row.rate;
+                const govBase = row.qty * (row.govCharge || 0);
                 const lineTax = lineBase * (row.taxRate / 100);
-                const lineTotal = lineBase + lineTax;
+                const lineTotal = lineBase + govBase + lineTax;
 
                 return (
                   <tr
@@ -459,6 +467,21 @@ export function InvoiceFormUI({
                         value={row.rate}
                         onChange={(e) =>
                           actions.updateRow(row._key, { rate: Number(e.target.value) })
+                        }
+                        className={cn(
+                          tableInputCls,
+                          "rounded-lg border border-transparent px-2 py-1.5 text-right focus:border-border focus:bg-card"
+                        )}
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.govCharge || 0}
+                        onChange={(e) =>
+                          actions.updateRow(row._key, { govCharge: Number(e.target.value) })
                         }
                         className={cn(
                           tableInputCls,
@@ -569,6 +592,14 @@ export function InvoiceFormUI({
                 {formatCurrency(totals.subtotal)}
               </span>
             </div>
+            {totals.govTotal !== undefined && totals.govTotal > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Govt. Charges</span>
+                <span className="font-medium text-foreground">
+                  {formatCurrency(totals.govTotal)}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Tax</span>
               <span className="font-medium text-foreground">
@@ -640,17 +671,32 @@ export function InvoiceFormUI({
               </div>
             )}
             
-            <div className="mt-4 flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="sendWhatsApp"
-                checked={state.sendWhatsApp}
-                onChange={(e) => actions.setSendWhatsApp(e.target.checked)}
-                className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500"
-              />
-              <label htmlFor="sendWhatsApp" className="text-sm font-medium text-emerald-700 dark:text-emerald-500">
-                Send Invoice via WhatsApp
-              </label>
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 border border-emerald-100 dark:border-emerald-900/50">
+                <input
+                  type="checkbox"
+                  id="sendWhatsApp"
+                  checked={state.sendWhatsApp}
+                  onChange={(e) => actions.setSendWhatsApp(e.target.checked)}
+                  className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <label htmlFor="sendWhatsApp" className="text-sm font-medium text-emerald-700 dark:text-emerald-500">
+                  Send WhatsApp Receipt
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 px-3 py-2 border border-blue-100 dark:border-blue-900/50">
+                <input
+                  type="checkbox"
+                  id="sendSms"
+                  checked={state.sendSms}
+                  onChange={(e) => actions.setSendSms(e.target.checked)}
+                  className="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="sendSms" className="text-sm font-medium text-blue-700 dark:text-blue-500">
+                  Send SMS Notification
+                </label>
+              </div>
             </div>
           </div>
 

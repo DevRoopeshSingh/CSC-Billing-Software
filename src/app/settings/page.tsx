@@ -32,6 +32,7 @@ import {
   PrinterIcon,
   Lock,
   Key,
+  MessageSquare,
 } from "lucide-react";
 
 // ── Wire shape coming back from GET /api/center ──────────────────────────────
@@ -52,6 +53,11 @@ interface CenterApi {
   operatingHours: string;
   centerDescription: string;
   printUpiQr: boolean;
+  smsEnabled: boolean;
+  smsProvider: string;
+  smsApiToken: string | null;
+  smsSenderId: string | null;
+  smsTemplateId: string | null;
 }
 
 // Printer subset still served by Electron/SQLite — not in the pg schema.
@@ -75,6 +81,11 @@ interface SettingsForm {
   printerInterface: string;
   printerType: string;
   printUpiQr: boolean;
+  smsEnabled: boolean;
+  smsProvider: string;
+  smsApiToken: string;
+  smsSenderId: string;
+  smsTemplateId: string;
 }
 
 const DEFAULT_FORM: SettingsForm = {
@@ -92,6 +103,11 @@ const DEFAULT_FORM: SettingsForm = {
   printerInterface: "tcp://192.168.1.100:9100",
   printerType: "EPSON",
   printUpiQr: false,
+  smsEnabled: false,
+  smsProvider: "fast2sms",
+  smsApiToken: "",
+  smsSenderId: "",
+  smsTemplateId: "",
 };
 
 function profileToForm(p: CenterApi, printer: PrinterFromIpc): SettingsForm {
@@ -111,6 +127,11 @@ function profileToForm(p: CenterApi, printer: PrinterFromIpc): SettingsForm {
     printerInterface: printer.printerInterface ?? "tcp://192.168.1.100:9100",
     printerType: printer.printerType ?? "EPSON",
     printUpiQr: p.printUpiQr ?? false,
+    smsEnabled: p.smsEnabled ?? false,
+    smsProvider: p.smsProvider ?? "fast2sms",
+    smsApiToken: p.smsApiToken ?? "",
+    smsSenderId: p.smsSenderId ?? "",
+    smsTemplateId: p.smsTemplateId ?? "",
   };
 }
 
@@ -469,6 +490,11 @@ export default function SettingsPage() {
         defaultPaymentMode: form.defaultPaymentMode,
         upiId: form.upiId.trim() || null,
         printUpiQr: form.printUpiQr,
+        smsEnabled: form.smsEnabled,
+        smsProvider: form.smsProvider,
+        smsApiToken: form.smsApiToken.trim() || null,
+        smsSenderId: form.smsSenderId.trim() || null,
+        smsTemplateId: form.smsTemplateId.trim() || null,
       };
       await api.patch(API.CENTER, webPayload);
 
@@ -807,6 +833,81 @@ export default function SettingsPage() {
           <p className="mt-1 text-[11px] text-muted-foreground">
             Printed alongside the QR as &quot;Pay via UPI: yourname@upi&quot;.
           </p>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        icon={MessageSquare}
+        title="SMS Gateway Integration"
+        subtitle="Automatically send SMS notifications using Fast2SMS DLT-approved templates"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 pb-2 border-b border-border">
+            <input
+              type="checkbox"
+              id="smsEnabled"
+              checked={form.smsEnabled}
+              onChange={(e) => set("smsEnabled", e.target.checked)}
+              className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+            />
+            <label htmlFor="smsEnabled" className="text-sm font-medium text-foreground">
+              Enable automatic SMS receipts
+            </label>
+          </div>
+
+          {form.smsEnabled && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <FieldLabel required>SMS Provider</FieldLabel>
+                  <select
+                    value={form.smsProvider}
+                    onChange={(e) => set("smsProvider", e.target.value)}
+                    className={inputCls}
+                  >
+                    <option value="fast2sms">Fast2SMS (Recommended)</option>
+                    <option value="msg91" disabled>MSG91 (Coming Soon)</option>
+                  </select>
+                </div>
+                <div>
+                  <FieldLabel required hint="API Auth Token">API Key</FieldLabel>
+                  <input
+                    type="password"
+                    value={form.smsApiToken}
+                    onChange={(e) => set("smsApiToken", e.target.value)}
+                    className={inputCls}
+                    placeholder="Enter your Fast2SMS API key"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <FieldLabel required hint="e.g. FSTSMS">Sender ID</FieldLabel>
+                  <input
+                    type="text"
+                    value={form.smsSenderId}
+                    onChange={(e) => set("smsSenderId", e.target.value)}
+                    className={inputCls}
+                    placeholder="FSTSMS"
+                  />
+                </div>
+                <div>
+                  <FieldLabel required hint="DLT Template ID">Template ID</FieldLabel>
+                  <input
+                    type="text"
+                    value={form.smsTemplateId}
+                    onChange={(e) => set("smsTemplateId", e.target.value)}
+                    className={inputCls}
+                    placeholder="Enter DLT Template ID"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Variables order: {"{#var#}"} InvoiceNo, {"{#var#}"} Total
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </SectionCard>
 

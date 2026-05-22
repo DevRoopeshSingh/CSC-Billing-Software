@@ -41,6 +41,7 @@ type Item = {
   description: string;
   qty: number;
   rate: number;
+  govCharge?: number;
   taxRate: number;
   lineTotal: number;
   service?: Service | null;
@@ -409,9 +410,10 @@ export async function generateInvoicePdfBytes(
   //   AMOUNT "Rs. 999999.00" (≈80pt) — col width 85pt  ← was 55pt, overflowed
   const COL = {
     descX: marginX,
-    descMaxW: 232,
-    qtyRight: marginX + 280,
-    rateRight: marginX + 358,
+    descMaxW: 160,
+    qtyRight: marginX + 210,
+    rateRight: marginX + 284,
+    govRight: marginX + 358,
     taxRight: marginX + 414,
     totalRight: width - marginX,
   };
@@ -444,6 +446,7 @@ export async function generateInvoicePdfBytes(
   });
   drawHeaderRight("QTY", COL.qtyRight);
   drawHeaderRight("RATE", COL.rateRight);
+  drawHeaderRight("GOVT.", COL.govRight);
   drawHeaderRight("TAX%", COL.taxRight);
   drawHeaderRight("AMOUNT", COL.totalRight);
   y -= 18;
@@ -499,9 +502,11 @@ export async function generateInvoicePdfBytes(
     // Defensive width caps — should never trigger for realistic CSC pricing,
     // but guarantee no numeric cell can ever overlap its neighbour.
     const amountMaxW = COL.totalRight - COL.taxRight - 6;
+    const govMaxW = COL.govRight - COL.rateRight - 6;
     const rateMaxW = COL.rateRight - COL.qtyRight - 6;
     drawRowRight(String(item.qty), COL.qtyRight);
     drawRowRight(clipToWidth(money(item.rate), font, 10, rateMaxW), COL.rateRight);
+    drawRowRight(clipToWidth(money(item.govCharge || 0), font, 10, govMaxW), COL.govRight);
     drawRowRight(`${item.taxRate.toFixed(2)}%`, COL.taxRight);
     drawRowRight(
       clipToWidth(money(item.lineTotal), font, 10, amountMaxW),
@@ -550,6 +555,10 @@ export async function generateInvoicePdfBytes(
   };
 
   drawTotalsRow("Subtotal", money(invoice.subtotal));
+  const govTotal = invoice.items.reduce((s, it) => s + it.qty * (it.govCharge || 0), 0);
+  if (govTotal > 0) {
+    drawTotalsRow("Govt. Charges", money(govTotal));
+  }
   drawTotalsRow("Tax", money(invoice.taxTotal));
   if (invoice.discount > 0) {
     drawTotalsRow("Discount", `- ${money(invoice.discount)}`);

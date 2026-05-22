@@ -456,6 +456,14 @@ export default function InvoiceDetailPage() {
                 {formatCurrency(invoice.subtotal)}
               </dd>
             </div>
+            {items.some(it => (it as any).govCharge > 0) && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Govt. Charges</dt>
+                <dd className="font-medium text-foreground">
+                  {formatCurrency(items.reduce((s, it) => s + it.qty * ((it as any).govCharge || 0), 0))}
+                </dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt className="text-muted-foreground">Tax</dt>
               <dd className="font-medium text-foreground">
@@ -517,6 +525,9 @@ export default function InvoiceDetailPage() {
                   Rate
                 </th>
                 <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Govt. Charge
+                </th>
+                <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Tax %
                 </th>
                 <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -546,6 +557,9 @@ export default function InvoiceDetailPage() {
                   </td>
                   <td className="px-5 py-3 text-right text-foreground">
                     {formatCurrency(item.rate)}
+                  </td>
+                  <td className="px-5 py-3 text-right text-foreground">
+                    {formatCurrency((item as any).govCharge || 0)}
                   </td>
                   <td className="px-5 py-3 text-right text-muted-foreground">
                     {item.taxRate.toFixed(2)}%

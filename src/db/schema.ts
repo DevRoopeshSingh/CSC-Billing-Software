@@ -52,6 +52,11 @@ export const centerProfiles = sqliteTable("center_profiles", {
   s3Bucket: text("s3_bucket"),
   backupEncryptionKey: text("backup_encryption_key"),
   cronSecret: text("cron_secret"),
+  smsEnabled: integer("sms_enabled", { mode: "boolean" }).notNull().default(false),
+  smsProvider: text("sms_provider").notNull().default("fast2sms"),
+  smsApiToken: text("sms_api_token"),
+  smsSenderId: text("sms_sender_id"),
+  smsTemplateId: text("sms_template_id"),
 });
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -89,6 +94,8 @@ export const customers = sqliteTable("customers", {
   address: text("address").notNull().default(""),
   tags: text("tags").notNull().default(""),
   whatsappOptIn: integer("whatsapp_opt_in", { mode: "boolean" }).notNull().default(true),
+  smsOptIn: integer("sms_opt_in", { mode: "boolean" }).notNull().default(true),
+  loyaltyPoints: integer("loyalty_points").notNull().default(0),
   createdBy: integer("created_by").references(() => users.id),
   updatedBy: integer("updated_by").references(() => users.id),
 });
@@ -152,6 +159,7 @@ export const invoiceItems = sqliteTable("invoice_items", {
   description: text("description").notNull(),
   qty: integer("qty").notNull(),
   rate: real("rate").notNull(),
+  govCharge: real("gov_charge").notNull().default(0),
   taxRate: real("tax_rate").notNull().default(0),
   lineTotal: real("line_total").notNull(),
 });

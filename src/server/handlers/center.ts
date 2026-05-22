@@ -43,6 +43,11 @@ export interface CenterProfileShape {
   s3Bucket: string | null;
   backupEncryptionKey: string | null;
   cronSecret: string | null;
+  smsEnabled: boolean;
+  smsProvider: string;
+  smsApiToken: string | null;
+  smsSenderId: string | null;
+  smsTemplateId: string | null;
 }
 
 function serializeCenter(row: CenterRow): CenterProfileShape {
@@ -78,6 +83,11 @@ function serializeCenter(row: CenterRow): CenterProfileShape {
     s3Bucket: row.s3Bucket,
     backupEncryptionKey: row.backupEncryptionKey,
     cronSecret: row.cronSecret,
+    smsEnabled: row.smsEnabled,
+    smsProvider: row.smsProvider,
+    smsApiToken: row.smsApiToken,
+    smsSenderId: row.smsSenderId,
+    smsTemplateId: row.smsTemplateId,
   };
 }
 
@@ -120,6 +130,11 @@ export const centerUpdateInputSchema = z
     s3Bucket: z.string().nullable().optional(),
     backupEncryptionKey: z.string().nullable().optional(),
     cronSecret: z.string().nullable().optional(),
+    smsEnabled: z.boolean().optional(),
+    smsProvider: z.string().optional(),
+    smsApiToken: z.string().nullable().optional(),
+    smsSenderId: z.string().nullable().optional(),
+    smsTemplateId: z.string().nullable().optional(),
   })
   .strict();
 export type CenterUpdateInput = z.infer<typeof centerUpdateInputSchema>;

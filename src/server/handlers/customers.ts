@@ -85,7 +85,7 @@ export async function createCustomer(input: CustomerCreateInput, userId: number)
     action: "CREATE",
     entityType: "CUSTOMER",
     entityId: String(row.id),
-    details: { name: row.name, mobile: row.mobile },
+    details: { name: row.name, mobile: row.mobile, smsOptIn: row.smsOptIn },
   });
   
   return row;

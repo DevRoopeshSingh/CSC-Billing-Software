@@ -16,6 +16,7 @@ import {
 } from "@/shared/types";
 import { logAudit } from "./audit";
 import { dispatchInvoiceNotification } from "../services/whatsapp";
+import { sendInvoiceSms } from "../services/sms";
 
 type InvoiceRow = typeof schema.invoices.$inferSelect;
 type InvoiceItemRow = typeof schema.invoiceItems.$inferSelect;
@@ -49,6 +50,7 @@ export interface InvoiceItemShape {
   description: string;
   qty: number;
   rate: number;
+  govCharge: number;
   taxRate: number;
   lineTotal: number;
 }
@@ -91,6 +93,7 @@ function serializeItem(row: InvoiceItemRow): InvoiceItemShape {
   return {
     ...row,
     rate: Number(row.rate),
+    govCharge: Number(row.govCharge || 0),
     taxRate: Number(row.taxRate),
     lineTotal: Number(row.lineTotal),
   };
@@ -144,21 +147,23 @@ export async function getInvoice(
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function computeTotals(
-  items: { qty: number; rate: number; taxRate: number }[],
+  items: { qty: number; rate: number; govCharge: number; taxRate: number }[],
   discount: number
 ) {
   const lines = items.map((it) => {
     const base = it.qty * it.rate;
+    const govBase = it.qty * (it.govCharge || 0);
     const tax = +(base * (it.taxRate / 100)).toFixed(2);
     return {
       ...it,
       lineTax: tax,
-      lineTotal: +(base + tax).toFixed(2),
+      lineTotal: +(base + govBase + tax).toFixed(2),
     };
   });
   const subtotal = +lines.reduce((s, l) => s + l.qty * l.rate, 0).toFixed(2);
+  const govTotal = +lines.reduce((s, l) => s + l.qty * (l.govCharge || 0), 0).toFixed(2);
   const taxTotal = +lines.reduce((s, l) => s + l.lineTax, 0).toFixed(2);
-  const total = +(subtotal + taxTotal - discount).toFixed(2);
+  const total = +(subtotal + govTotal + taxTotal - discount).toFixed(2);
   return { lines, subtotal, taxTotal, total };
 }
 
@@ -224,6 +229,7 @@ export async function createInvoice(
       input.items.map((it) => ({
         qty: it.qty,
         rate: it.rate,
+        govCharge: it.govCharge || 0,
         taxRate: it.taxRate ?? 0,
       })),
       discount
@@ -263,6 +269,7 @@ export async function createInvoice(
           description: input.items[idx].description,
           qty: l.qty,
           rate: l.rate.toFixed(2),
+          govCharge: l.govCharge.toFixed(2),
           taxRate: l.taxRate.toFixed(2),
           lineTotal: l.lineTotal.toFixed(2),
         }))
@@ -323,6 +330,15 @@ export async function createInvoice(
     dispatchInvoiceNotification(result.id).catch(console.error);
   }
 
+  if (input.sendSms && result.customerId) {
+    const customer = await db.query.customers.findFirst({
+      where: eq(schema.customers.id, result.customerId),
+    });
+    if (customer && customer.mobile && customer.smsOptIn) {
+      sendInvoiceSms(result.id, customer.mobile, result.invoiceNo, result.total).catch(console.error);
+    }
+  }
+
   return { id: result.id, invoiceNo: result.invoiceNo };
 }
 
@@ -374,6 +390,7 @@ export async function updateInvoice(
       input.items.map((it) => ({
         qty: it.qty,
         rate: it.rate,
+        govCharge: it.govCharge || 0,
         taxRate: it.taxRate ?? 0,
       })),
       discount
@@ -415,6 +432,7 @@ export async function updateInvoice(
           description: input.items[idx].description,
           qty: l.qty,
           rate: l.rate.toFixed(2),
+          govCharge: (l.govCharge || 0).toFixed(2),
           taxRate: l.taxRate.toFixed(2),
           lineTotal: l.lineTotal.toFixed(2),
         }))

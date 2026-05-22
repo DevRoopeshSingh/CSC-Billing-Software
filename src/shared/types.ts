@@ -117,6 +117,11 @@ export const centerProfileSchema = z.object({
   s3Bucket: z.string().nullable().default(null),
   backupEncryptionKey: z.string().nullable().default(null),
   cronSecret: z.string().nullable().default(null),
+  smsEnabled: z.boolean().default(false),
+  smsProvider: z.string().default("fast2sms"),
+  smsApiToken: z.string().nullable().default(null),
+  smsSenderId: z.string().nullable().default(null),
+  smsTemplateId: z.string().nullable().default(null),
 });
 
 export type CenterProfile = z.infer<typeof centerProfileSchema>;
@@ -222,6 +227,7 @@ export const customerSchema = z.object({
   address: z.string().default(""),
   tags: z.string().default(""),
   whatsappOptIn: z.boolean().default(true),
+  smsOptIn: z.boolean().default(true),
   loyaltyPoints: z.number().int().default(0),
   createdBy: z.number().int().positive().nullable().optional(),
   updatedBy: z.number().int().positive().nullable().optional(),
@@ -240,6 +246,7 @@ export const invoiceItemSchema = z.object({
   description: z.string().min(1),
   qty: z.number().int().positive(),
   rate: z.number().nonnegative(),
+  govCharge: z.number().nonnegative().default(0),
   taxRate: z.number().nonnegative().max(100).default(0),
   lineTotal: z.number().nonnegative(),
 });
@@ -291,6 +298,7 @@ export const createInvoiceSchema = z.object({
       description: z.string().min(1),
       qty: z.number().int().positive(),
       rate: z.number().nonnegative(),
+      govCharge: z.number().nonnegative().default(0),
       taxRate: z.number().nonnegative().max(100).default(0),
     })
   ),
@@ -302,6 +310,7 @@ export const createInvoiceSchema = z.object({
   pointsRedeemed: z.number().int().nonnegative().optional(),
   advancePayment: z.number().nonnegative().default(0).optional(),
   sendWhatsApp: z.boolean().default(false).optional(),
+  sendSms: z.boolean().default(false).optional(),
 });
 
 export type CreateInvoiceRequest = z.infer<typeof createInvoiceSchema>;

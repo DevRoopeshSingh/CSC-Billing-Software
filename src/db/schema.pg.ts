@@ -70,6 +70,11 @@ export const centerProfiles = pgTable("center_profiles", {
   s3Bucket: text("s3_bucket"),
   backupEncryptionKey: text("backup_encryption_key"),
   cronSecret: text("cron_secret"),
+  smsEnabled: boolean("sms_enabled").notNull().default(false),
+  smsProvider: text("sms_provider").notNull().default("fast2sms"),
+  smsApiToken: text("sms_api_token"),
+  smsSenderId: text("sms_sender_id"),
+  smsTemplateId: text("sms_template_id"),
 });
 
 export const services = pgTable("services", {
@@ -127,6 +132,7 @@ export const customers = pgTable("customers", {
   address: text("address").notNull().default(""),
   tags: text("tags").notNull().default(""),
   whatsappOptIn: boolean("whatsapp_opt_in").notNull().default(true),
+  smsOptIn: boolean("sms_opt_in").notNull().default(true),
   loyaltyPoints: integer("loyalty_points").notNull().default(0),
   createdBy: integer("created_by").references(() => users.id),
   updatedBy: integer("updated_by").references(() => users.id),
@@ -190,6 +196,9 @@ export const invoiceItems = pgTable(
     description: text("description").notNull(),
     qty: integer("qty").notNull(),
     rate: numeric("rate", { precision: 12, scale: 2 }).notNull(),
+    govCharge: numeric("gov_charge", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
     taxRate: numeric("tax_rate", { precision: 5, scale: 2 })
       .notNull()
       .default("0"),

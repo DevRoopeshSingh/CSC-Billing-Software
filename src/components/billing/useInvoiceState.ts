@@ -7,6 +7,7 @@ export interface LineItem {
   description: string;
   qty: number;
   rate: number;
+  govCharge: number;
   taxRate: number;
 }
 
@@ -23,6 +24,7 @@ export const createLineItem = (service?: Service): LineItem => {
       description: service.name,
       qty: 1,
       rate: service.defaultPrice,
+      govCharge: 0,
       taxRate: service.taxRate,
     };
   }
@@ -32,6 +34,7 @@ export const createLineItem = (service?: Service): LineItem => {
     description: "",
     qty: 1,
     rate: 0,
+    govCharge: 0,
     taxRate: 0,
   };
 };
@@ -39,14 +42,16 @@ export const createLineItem = (service?: Service): LineItem => {
 export function useInvoiceTotals(lineItems: LineItem[], discount: number) {
   return useMemo(() => {
     const sub = lineItems.reduce((s, r) => s + r.qty * r.rate, 0);
+    const gov = lineItems.reduce((s, r) => s + r.qty * (r.govCharge || 0), 0);
     const tax = lineItems.reduce(
       (s, r) => s + r.qty * r.rate * (r.taxRate / 100),
       0
     );
     return {
       subtotal: +sub.toFixed(2),
+      govTotal: +gov.toFixed(2),
       taxTotal: +tax.toFixed(2),
-      total: +(sub + tax - discount).toFixed(2),
+      total: +(sub + gov + tax - discount).toFixed(2),
     };
   }, [lineItems, discount]);
 }
@@ -65,6 +70,7 @@ export interface InvoiceState {
   pointsRedeemed: number;
   advancePayment: number;
   sendWhatsApp: boolean;
+  sendSms: boolean;
 }
 
 export function useInvoiceState(initialData?: Partial<InvoiceState>) {
@@ -102,6 +108,9 @@ export function useInvoiceState(initialData?: Partial<InvoiceState>) {
   const [sendWhatsApp, setSendWhatsApp] = useState(
     initialData?.sendWhatsApp ?? true // Default to true or customer's opt-in, we'll default to true here
   );
+  const [sendSms, setSendSms] = useState(
+    initialData?.sendSms ?? true
+  );
 
   return {
     state: {
@@ -118,6 +127,7 @@ export function useInvoiceState(initialData?: Partial<InvoiceState>) {
       pointsRedeemed,
       advancePayment,
       sendWhatsApp,
+      sendSms,
     },
     actions: {
       setSelectedCustomer,
@@ -133,6 +143,7 @@ export function useInvoiceState(initialData?: Partial<InvoiceState>) {
       setPointsRedeemed,
       setAdvancePayment,
       setSendWhatsApp,
+      setSendSms,
       addServiceById: (serviceId: number, services: Service[]) => {
         const svc = services.find((s) => s.id === serviceId);
         if (!svc) return;
@@ -206,5 +217,6 @@ export function buildInvoicePayload(
     pointsRedeemed: state.pointsRedeemed > 0 ? state.pointsRedeemed : undefined,
     advancePayment: state.advancePayment > 0 ? state.advancePayment : undefined,
     sendWhatsApp: state.sendWhatsApp,
+    sendSms: state.sendSms,
   };
 }

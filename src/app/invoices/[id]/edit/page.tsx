@@ -45,6 +45,7 @@ function EditInvoiceForm({
       description: it.description ?? "",
       qty: it.qty,
       rate: it.rate,
+      govCharge: (it as any).govCharge ?? 0,
       taxRate: it.taxRate,
     })),
   });
