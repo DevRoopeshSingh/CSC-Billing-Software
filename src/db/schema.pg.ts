@@ -258,3 +258,47 @@ export const designsRelations = relations(designs, ({ one }) => ({
   }),
 }));
 
+export const expenses = pgTable("expenses", {
+  id: serial("id").primaryKey(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  category: text("category").notNull().default("Other"),
+  description: text("description").notNull().default(""),
+  expenseDate: timestamp("expense_date", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  paymentMode: text("payment_mode").notNull().default("Cash"),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const shiftHandovers = pgTable("shift_handovers", {
+  id: serial("id").primaryKey(),
+  shiftDate: timestamp("shift_date", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  startingCash: numeric("starting_cash", { precision: 12, scale: 2 }).notNull().default("0"),
+  expectedEndingCash: numeric("expected_ending_cash", { precision: 12, scale: 2 }).notNull().default("0"),
+  actualEndingCash: numeric("actual_ending_cash", { precision: 12, scale: 2 }).notNull().default("0"),
+  discrepancy: numeric("discrepancy", { precision: 12, scale: 2 }).notNull().default("0"),
+  notes: text("notes"),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const expensesRelations = relations(expenses, ({ one }) => ({
+  creator: one(users, {
+    fields: [expenses.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const shiftHandoversRelations = relations(shiftHandovers, ({ one }) => ({
+  creator: one(users, {
+    fields: [shiftHandovers.createdBy],
+    references: [users.id],
+  }),
+}));

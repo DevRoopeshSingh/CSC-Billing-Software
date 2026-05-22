@@ -18,6 +18,7 @@ import {
   BarChart3,
   Clock,
   FileWarning,
+  PieChart,
 } from "lucide-react";
 
 type ReportSummary = {
@@ -28,6 +29,7 @@ type ReportSummary = {
     discount: number;
     revenue: number;
   };
+  byPaymentMode?: { paymentMode: string; count: number; total: number }[];
 };
 
 type PendingDues = { count: number; total: number };
@@ -107,6 +109,7 @@ export default function DashboardPage() {
     total: 0,
   });
   const [avgInvoice, setAvgInvoice] = useState(0);
+  const [paymentModes, setPaymentModes] = useState<{paymentMode: string, count: number, total: number}[]>([]);
   const [recent, setRecent] = useState<RecentInvoice[]>([]);
   const lastLoadedDateRef = useRef<string | null>(null);
 
@@ -127,6 +130,7 @@ export default function DashboardPage() {
       setTodayRevenue(t?.revenue ?? 0);
       setPendingDues(dues ?? { count: 0, total: 0 });
       setAvgInvoice(t && t.invoiceCount > 0 ? t.revenue / t.invoiceCount : 0);
+      setPaymentModes(todaySummary?.byPaymentMode ?? []);
 
       setRecent(
         (allInvoices ?? []).slice(0, 5).map((i) => ({
@@ -235,6 +239,26 @@ export default function DashboardPage() {
           accent="bg-amber-50 text-amber-600"
         />
       </div>
+
+      {paymentModes.length > 0 && (
+        <div className="rounded-xl border border-border bg-card shadow-sm p-5 sm:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <PieChart className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">
+              Today's Payment Breakdown
+            </h3>
+          </div>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {paymentModes.map((pm) => (
+              <div key={pm.paymentMode} className="rounded-lg bg-background p-3 border border-border">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">{pm.paymentMode}</p>
+                <p className="mt-1 text-lg font-bold text-foreground">{formatCurrency(pm.total)}</p>
+                <p className="text-[10px] text-muted-foreground">{pm.count} {pm.count === 1 ? 'invoice' : 'invoices'}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <BookmarkedServices />
 

@@ -24,6 +24,7 @@ import {
   Filter,
   ChevronDown,
   Download,
+  MessageCircle,
 } from "lucide-react";
 import { useCanWrite } from "@/lib/permissions";
 
@@ -333,7 +334,18 @@ function InvoicesContent() {
                     <div>
                       <p className="font-medium text-foreground">{inv.customer?.name ?? "—"}</p>
                       {inv.customer?.mobile && (
-                        <p className="text-xs text-muted-foreground">{inv.customer.mobile}</p>
+                        <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                          {inv.customer.mobile}
+                          <a
+                            href={`https://wa.me/91${inv.customer.mobile.replace(/\D/g, '')}?text=Hi%20${encodeURIComponent(inv.customer.name)},`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center rounded-full bg-emerald-50 p-1 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                            title="Message on WhatsApp"
+                          >
+                            <MessageCircle className="h-3 w-3" />
+                          </a>
+                        </p>
                       )}
                     </div>
 
@@ -427,8 +439,17 @@ function InvoicesContent() {
                           {inv.customer?.name ?? "—"}
                         </p>
                         {inv.customer?.mobile && (
-                          <p className="text-xs text-muted-foreground">
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                             {inv.customer.mobile}
+                            <a
+                              href={`https://wa.me/91${inv.customer.mobile.replace(/\D/g, '')}?text=Hi%20${encodeURIComponent(inv.customer.name)},`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center rounded-full bg-emerald-50 p-1 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                              title="Message on WhatsApp"
+                            >
+                              <MessageCircle className="h-3 w-3" />
+                            </a>
                           </p>
                         )}
                       </div>

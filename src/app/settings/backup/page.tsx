@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Lock,
+  Cloud,
 } from "lucide-react";
 import { PinPromptModal } from "@/components/auth/PinPromptModal";
 
@@ -93,9 +94,16 @@ export default function BackupPage() {
 
   if (hasBridge === false) {
     return (
-      <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
-        <HardDrive className="h-8 w-8" />
-        <p className="text-sm">File system backups are only available in the desktop app.</p>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center p-6 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 mb-6 shadow-sm border border-blue-100">
+          <Cloud className="h-8 w-8" />
+        </div>
+        <h2 className="text-xl font-semibold text-foreground mb-2">Cloud Connected</h2>
+        <p className="max-w-md text-sm text-muted-foreground leading-relaxed">
+          Your database is securely hosted in the cloud via PostgreSQL and is automatically backed up by the cloud provider.
+          <br /><br />
+          Manual local <code className="bg-muted px-1 py-0.5 rounded text-[11px]">.db</code> file exports are only required and available when using the legacy offline desktop app.
+        </p>
       </div>
     );
   }

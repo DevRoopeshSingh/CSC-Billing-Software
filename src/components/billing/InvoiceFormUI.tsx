@@ -64,6 +64,16 @@ export function InvoiceFormUI({
   actionLoading,
 }: InvoiceFormUIProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [serviceSearchTerm, setServiceSearchTerm] = useState("");
+  const [serviceSearchOpen, setServiceSearchOpen] = useState(false);
+
+  const filteredServices = useMemo(() => {
+    if (!serviceSearchTerm) return [];
+    const q = serviceSearchTerm.toLowerCase();
+    return services
+      .filter((s) => s.name.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [services, serviceSearchTerm]);
 
   const grouped = useMemo(
     () =>
@@ -275,17 +285,61 @@ export function InvoiceFormUI({
               />
               Intra-state (CGST+SGST)
             </label>
-            <button
-              type="button"
-              onClick={actions.addRow}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5",
-                "text-xs font-medium text-foreground transition-colors hover:bg-background"
-              )}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Item
-            </button>
+            
+            <div className="flex items-center gap-2">
+              <div className="relative hidden sm:block">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Quick search & add..."
+                  value={serviceSearchTerm}
+                  onChange={(e) => {
+                    setServiceSearchTerm(e.target.value);
+                    setServiceSearchOpen(true);
+                  }}
+                  onFocus={() => setServiceSearchOpen(true)}
+                  onBlur={() => setTimeout(() => setServiceSearchOpen(false), 150)}
+                  className={cn(
+                    "w-48 rounded-lg border border-border bg-card py-1.5 pl-8 pr-3 text-xs",
+                    "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                  )}
+                />
+                {serviceSearchOpen && serviceSearchTerm && (
+                  <div className="absolute right-0 top-full z-50 mt-1 w-64 max-h-60 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+                    {filteredServices.length === 0 ? (
+                      <div className="p-3 text-xs text-muted-foreground text-center">No matches found</div>
+                    ) : (
+                      filteredServices.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onMouseDown={() => {
+                            actions.addServiceById(s.id!, services);
+                            setServiceSearchTerm("");
+                            setServiceSearchOpen(false);
+                          }}
+                          className="flex w-full flex-col px-3 py-2 text-left hover:bg-background transition-colors border-b border-border/50 last:border-0"
+                        >
+                          <span className="text-xs font-semibold text-foreground">{s.name}</span>
+                          <span className="text-[10px] text-muted-foreground">₹{(s.defaultPrice || 0).toFixed(2)} &bull; {s.category || 'Other'}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={actions.addRow}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5",
+                  "text-xs font-medium text-foreground transition-colors hover:bg-background"
+                )}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Empty Row
+              </button>
+            </div>
           </div>
         </div>
 

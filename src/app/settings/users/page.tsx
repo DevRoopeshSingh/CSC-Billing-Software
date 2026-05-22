@@ -84,8 +84,8 @@ export default function UsersSettingsPage() {
         </button>
       </div>
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm">
+      <div className="hidden md:block rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[600px]">
           <thead className="border-b border-border bg-muted/50 text-xs text-muted-foreground">
             <tr>
               <th className="px-6 py-4 font-medium">User</th>
@@ -158,6 +158,66 @@ export default function UsersSettingsPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile Card Layout */}
+      <div className="grid grid-cols-1 gap-4 md:hidden">
+        {loading ? (
+          <div className="flex justify-center p-8 text-muted-foreground border border-border rounded-xl bg-card shadow-sm">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : users.map((u) => (
+          <div key={u.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold uppercase shrink-0">
+                  {u.username.charAt(0)}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground truncate">{u.username}</p>
+                  {u.email && <p className="text-[11px] text-muted-foreground truncate">{u.email}</p>}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                <span className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide",
+                  u.role === "admin" ? "bg-red-500/10 text-red-500" :
+                  u.role === "staff" ? "bg-blue-500/10 text-blue-500" :
+                  "bg-gray-500/10 text-gray-500"
+                )}>
+                  {u.role === "admin" && <Shield className="h-3 w-3" />}
+                  {u.role === "staff" && <Edit2 className="h-3 w-3" />}
+                  {u.role === "viewer" && <UserIcon className="h-3 w-3" />}
+                  {u.role}
+                </span>
+                <span className={cn(
+                  "inline-block rounded-full px-2.5 py-1 text-[10px] font-medium",
+                  u.isActive ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"
+                )}>
+                  {u.isActive ? "Active" : "Disabled"}
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/50">
+              <button 
+                onClick={() => setShowPasswordModal(u.id!)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors rounded-lg border border-border hover:bg-primary/5 bg-background"
+              >
+                <Key className="h-3.5 w-3.5" />
+                Password
+              </button>
+              <button 
+                onClick={() => handleToggleActive(u)}
+                disabled={u.id === currentUser?.id}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-red-500 transition-colors rounded-lg border border-border hover:bg-red-500/5 bg-background disabled:opacity-30 disabled:hover:bg-background disabled:hover:text-muted-foreground"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {u.isActive ? "Disable" : "Enable"}
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {showAddModal && <AddUserModal onClose={() => setShowAddModal(false)} onAdded={loadUsers} />}

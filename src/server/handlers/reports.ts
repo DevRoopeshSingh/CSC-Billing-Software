@@ -16,6 +16,8 @@ export interface ReportSummary {
     discount: number;
     revenue: number;
   };
+  byStatus: Record<"PAID" | "PENDING" | "CANCELLED", { count: number; total: number }>;
+  byPaymentMode: { paymentMode: string; count: number; total: number }[];
 }
 
 export interface PendingDues {

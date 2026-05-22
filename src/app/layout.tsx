@@ -31,6 +31,8 @@ import {
   Monitor,
   BookOpen,
   Palette,
+  Receipt,
+  Clock,
 } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/lib/auth-context";
@@ -77,6 +79,13 @@ function SidebarNav() {
         { href: "/invoices", label: "Invoices", icon: FileText },
         { href: "/customers", label: "Customers", icon: Users },
         { href: "/services", label: "Services", icon: Briefcase },
+      ],
+    },
+    {
+      label: "Operations",
+      items: [
+        { href: "/expenses", label: "Expenses", icon: Receipt },
+        { href: "/shifts", label: "Shifts", icon: Clock },
       ],
     },
     {

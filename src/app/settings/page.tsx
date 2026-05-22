@@ -69,7 +69,7 @@ interface SettingsForm {
   centerDescription: string;
   operatingHours: string;
   invoicePrefix: string;
-  defaultTaxRate: number;
+  defaultTaxRate: number | string;
   defaultPaymentMode: "Cash" | "UPI" | "Card" | "Other";
   upiId: string;
   printerInterface: string;
@@ -465,7 +465,7 @@ export default function SettingsPage() {
         centerDescription: form.centerDescription.trim(),
         operatingHours: form.operatingHours.trim(),
         invoicePrefix: form.invoicePrefix.trim(),
-        defaultTaxRate: Number(form.defaultTaxRate),
+        defaultTaxRate: Number(form.defaultTaxRate) || 0,
         defaultPaymentMode: form.defaultPaymentMode,
         upiId: form.upiId.trim() || null,
         printUpiQr: form.printUpiQr,
@@ -728,9 +728,7 @@ export default function SettingsPage() {
                 max="100"
                 step="0.01"
                 value={form.defaultTaxRate}
-                onChange={(e) =>
-                  set("defaultTaxRate", parseFloat(e.target.value) || 0)
-                }
+                onChange={(e) => set("defaultTaxRate", e.target.value)}
                 className={inputCls}
               />
               <p className="mt-1 text-[11px] text-muted-foreground">
@@ -925,7 +923,7 @@ export default function SettingsPage() {
                 htmlFor="printUpiQr"
                 className="text-sm font-medium text-foreground"
               >
-                Print UPI QR Code on Receipts
+                Print UPI QR Code on Thermal Receipts
               </label>
             </div>
 
@@ -954,35 +952,6 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
-      </SectionCard>
-
-      <SectionCard
-        icon={Clock}
-        title="Schedule & Notes"
-        subtitle="Informational — not printed on invoices in this version"
-      >
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <FieldLabel hint="optional">Operating Hours</FieldLabel>
-            <input
-              type="text"
-              value={form.operatingHours}
-              onChange={(e) => set("operatingHours", e.target.value)}
-              placeholder="Mon–Sat, 9 AM – 7 PM"
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <FieldLabel hint="optional">Center Description / Tagline</FieldLabel>
-            <input
-              type="text"
-              value={form.centerDescription}
-              onChange={(e) => set("centerDescription", e.target.value)}
-              placeholder="Your one-stop digital services center"
-              className={inputCls}
-            />
-          </div>
-        </div>
       </SectionCard>
 
       <div

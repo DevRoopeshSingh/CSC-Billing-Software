@@ -15,6 +15,7 @@ import {
   Phone,
   Tag,
   MessageSquare,
+  MessageCircle,
   Pencil,
   Trash2,
   FileText,
@@ -263,6 +264,15 @@ export default function CustomersPage() {
                             <span className="flex items-center gap-1.5 text-muted-foreground text-sm mt-0.5">
                               <Phone className="h-3.5 w-3.5" />
                               {c.mobile}
+                              <a
+                                href={`https://wa.me/91${c.mobile.replace(/\D/g, '')}?text=Hi%20${encodeURIComponent(c.name)},`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-1 inline-flex items-center justify-center rounded-full bg-emerald-50 p-1 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                                title="Message on WhatsApp"
+                              >
+                                <MessageCircle className="h-3 w-3" />
+                              </a>
                             </span>
                           ) : (
                             <span className="text-muted-foreground text-sm mt-0.5 block">No mobile</span>
@@ -395,9 +405,20 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-6 py-4">
                       {c.mobile ? (
-                        <span className="flex items-center gap-1.5 text-foreground">
-                          <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                          {c.mobile}
+                        <span className="flex items-center gap-2 text-foreground">
+                          <span className="flex items-center gap-1.5">
+                            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                            {c.mobile}
+                          </span>
+                          <a
+                            href={`https://wa.me/91${c.mobile.replace(/\D/g, '')}?text=Hi%20${encodeURIComponent(c.name)},`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center rounded-full bg-emerald-50 p-1 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                            title="Message on WhatsApp"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" />
+                          </a>
                         </span>
                       ) : (
                         <span className="text-muted-foreground">--</span>

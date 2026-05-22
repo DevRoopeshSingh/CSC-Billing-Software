@@ -222,6 +222,13 @@ export default function ReportsPage() {
     [summary]
   );
 
+  const handleTallyExport = () => {
+    const startDate = new Date(range.start);
+    const month = startDate.getMonth() + 1;
+    const year = startDate.getFullYear();
+    window.open(`/api/reports/tally-export?month=${month}&year=${year}`, "_blank");
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -306,23 +313,36 @@ export default function ReportsPage() {
             Revenue, payment, and service performance.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exporting || loading}
-          className={cn(
-            "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2",
-            "text-[13px] font-medium text-foreground transition-colors hover:bg-background",
-            "disabled:cursor-not-allowed disabled:opacity-60"
-          )}
-        >
-          {exporting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleTallyExport}
+            className={cn(
+              "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2",
+              "text-[13px] font-medium text-foreground transition-colors hover:bg-background"
+            )}
+          >
             <Download className="h-4 w-4" />
-          )}
-          Export CSV
-        </button>
+            Tally Export
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || loading}
+            className={cn(
+              "flex items-center gap-2 rounded-lg border border-border bg-primary px-4 py-2",
+              "text-[13px] font-medium text-white transition-colors hover:bg-primary-dark",
+              "disabled:cursor-not-allowed disabled:opacity-60"
+            )}
+          >
+            {exporting ? (
+              <Loader2 className="h-4 w-4 animate-spin text-white" />
+            ) : (
+              <Download className="h-4 w-4 text-white" />
+            )}
+            Export CSV
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm">
