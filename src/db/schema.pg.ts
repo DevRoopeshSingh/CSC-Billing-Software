@@ -60,6 +60,9 @@ export const centerProfiles = pgTable("center_profiles", {
   operatingHours: text("operating_hours").notNull().default(""),
   centerDescription: text("center_description").notNull().default(""),
   printUpiQr: boolean("print_upi_qr").notNull().default(false),
+  whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false),
+  whatsappApiToken: text("whatsapp_api_token"),
+  whatsappPhoneId: text("whatsapp_phone_id"),
 });
 
 export const services = pgTable("services", {
@@ -116,6 +119,7 @@ export const customers = pgTable("customers", {
   email: text("email").notNull().default(""),
   address: text("address").notNull().default(""),
   tags: text("tags").notNull().default(""),
+  whatsappOptIn: boolean("whatsapp_opt_in").notNull().default(true),
   loyaltyPoints: integer("loyalty_points").notNull().default(0),
   createdBy: integer("created_by").references(() => users.id),
   updatedBy: integer("updated_by").references(() => users.id),

@@ -42,6 +42,9 @@ export const centerProfiles = sqliteTable("center_profiles", {
   printerInterface: text("printer_interface").notNull().default("tcp://192.168.1.100:9100"),
   printerType: text("printer_type").notNull().default("EPSON"),
   printUpiQr: integer("print_upi_qr", { mode: "boolean" }).notNull().default(false),
+  whatsappEnabled: integer("whatsapp_enabled", { mode: "boolean" }).notNull().default(false),
+  whatsappApiToken: text("whatsapp_api_token"),
+  whatsappPhoneId: text("whatsapp_phone_id"),
 });
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -78,6 +81,7 @@ export const customers = sqliteTable("customers", {
   email: text("email").notNull().default(""),
   address: text("address").notNull().default(""),
   tags: text("tags").notNull().default(""),
+  whatsappOptIn: integer("whatsapp_opt_in", { mode: "boolean" }).notNull().default(true),
   createdBy: integer("created_by").references(() => users.id),
   updatedBy: integer("updated_by").references(() => users.id),
 });

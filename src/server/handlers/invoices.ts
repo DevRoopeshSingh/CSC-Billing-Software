@@ -15,6 +15,7 @@ import {
   type BulkMarkPaidResult,
 } from "@/shared/types";
 import { logAudit } from "./audit";
+import { dispatchInvoiceNotification } from "../services/whatsapp";
 
 type InvoiceRow = typeof schema.invoices.$inferSelect;
 type InvoiceItemRow = typeof schema.invoiceItems.$inferSelect;
@@ -316,6 +317,11 @@ export async function createInvoice(
     entityId: String(result.id),
     details: { invoiceNo: result.invoiceNo, total: result.total, customerId: result.customerId },
   });
+
+  if (input.sendWhatsApp) {
+    // Fire and forget (non-blocking)
+    dispatchInvoiceNotification(result.id).catch(console.error);
+  }
 
   return { id: result.id, invoiceNo: result.invoiceNo };
 }

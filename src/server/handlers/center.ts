@@ -33,6 +33,9 @@ export interface CenterProfileShape {
   operatingHours: string;
   centerDescription: string;
   printUpiQr: boolean;
+  whatsappEnabled: boolean;
+  whatsappApiToken: string | null;
+  whatsappPhoneId: string | null;
 }
 
 function serializeCenter(row: CenterRow): CenterProfileShape {
@@ -58,6 +61,9 @@ function serializeCenter(row: CenterRow): CenterProfileShape {
     operatingHours: row.operatingHours,
     centerDescription: row.centerDescription,
     printUpiQr: row.printUpiQr,
+    whatsappEnabled: row.whatsappEnabled,
+    whatsappApiToken: row.whatsappApiToken,
+    whatsappPhoneId: row.whatsappPhoneId,
   };
 }
 

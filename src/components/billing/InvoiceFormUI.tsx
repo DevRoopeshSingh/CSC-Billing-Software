@@ -29,6 +29,7 @@ interface InvoiceFormUIProps {
     setNewMobile: (v: string) => void;
     setDiscount: (v: number) => void;
     setAdvancePayment: (v: number) => void;
+    setSendWhatsApp: (v: boolean) => void;
     setPointsRedeemed: (v: number) => void;
     setPaymentMode: (v: "Cash" | "UPI" | "Card" | "Other") => void;
     setNotes: (v: string) => void;
@@ -638,6 +639,19 @@ export function InvoiceFormUI({
                 </span>
               </div>
             )}
+            
+            <div className="mt-4 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="sendWhatsApp"
+                checked={state.sendWhatsApp}
+                onChange={(e) => actions.setSendWhatsApp(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500"
+              />
+              <label htmlFor="sendWhatsApp" className="text-sm font-medium text-emerald-700 dark:text-emerald-500">
+                Send Invoice via WhatsApp
+              </label>
+            </div>
           </div>
 
           <div className="mt-6 flex flex-col gap-3">

@@ -64,6 +64,7 @@ export interface InvoiceState {
   intraState: boolean;
   pointsRedeemed: number;
   advancePayment: number;
+  sendWhatsApp: boolean;
 }
 
 export function useInvoiceState(initialData?: Partial<InvoiceState>) {
@@ -98,6 +99,9 @@ export function useInvoiceState(initialData?: Partial<InvoiceState>) {
   const [advancePayment, setAdvancePayment] = useState(
     initialData?.advancePayment ?? 0
   );
+  const [sendWhatsApp, setSendWhatsApp] = useState(
+    initialData?.sendWhatsApp ?? true // Default to true or customer's opt-in, we'll default to true here
+  );
 
   return {
     state: {
@@ -113,6 +117,7 @@ export function useInvoiceState(initialData?: Partial<InvoiceState>) {
       intraState,
       pointsRedeemed,
       advancePayment,
+      sendWhatsApp,
     },
     actions: {
       setSelectedCustomer,
@@ -127,6 +132,7 @@ export function useInvoiceState(initialData?: Partial<InvoiceState>) {
       setIntraState,
       setPointsRedeemed,
       setAdvancePayment,
+      setSendWhatsApp,
       addServiceById: (serviceId: number, services: Service[]) => {
         const svc = services.find((s) => s.id === serviceId);
         if (!svc) return;
@@ -199,5 +205,6 @@ export function buildInvoicePayload(
     customerNotes: state.customerNotes.trim() || undefined,
     pointsRedeemed: state.pointsRedeemed > 0 ? state.pointsRedeemed : undefined,
     advancePayment: state.advancePayment > 0 ? state.advancePayment : undefined,
+    sendWhatsApp: state.sendWhatsApp,
   };
 }

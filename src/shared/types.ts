@@ -107,6 +107,9 @@ export const centerProfileSchema = z.object({
   printerInterface: z.string().default("tcp://192.168.1.100:9100"),
   printerType: z.string().default("EPSON"),
   printUpiQr: z.boolean().default(false),
+  whatsappEnabled: z.boolean().default(false),
+  whatsappApiToken: z.string().nullable().default(null),
+  whatsappPhoneId: z.string().nullable().default(null),
 });
 
 export type CenterProfile = z.infer<typeof centerProfileSchema>;
@@ -211,6 +214,7 @@ export const customerSchema = z.object({
   email: z.string().email().or(z.literal("")).default(""),
   address: z.string().default(""),
   tags: z.string().default(""),
+  whatsappOptIn: z.boolean().default(true),
   loyaltyPoints: z.number().int().default(0),
   createdBy: z.number().int().positive().nullable().optional(),
   updatedBy: z.number().int().positive().nullable().optional(),
@@ -290,6 +294,7 @@ export const createInvoiceSchema = z.object({
   customerNotes: z.string().optional(),
   pointsRedeemed: z.number().int().nonnegative().optional(),
   advancePayment: z.number().nonnegative().default(0).optional(),
+  sendWhatsApp: z.boolean().default(false).optional(),
 });
 
 export type CreateInvoiceRequest = z.infer<typeof createInvoiceSchema>;
