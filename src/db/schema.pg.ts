@@ -185,6 +185,7 @@ export const invoiceItems = pgTable(
 export const usersRelations = relations(users, ({ many }) => ({
   invoicesCreated: many(invoices, { relationName: "invoiceCreatedBy" }),
   invoicesUpdated: many(invoices, { relationName: "invoiceUpdatedBy" }),
+  designs: many(designs),
 }));
 
 export const customersRelations = relations(customers, ({ many }) => ({
@@ -234,3 +235,26 @@ export const serviceChecklistsRelations = relations(
     }),
   })
 );
+
+export const designs = pgTable("designs", {
+  id: text("id").primaryKey(), // e.g., 'design_123'
+  name: text("name").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  // JSON representation of the Fabric canvas state (AvnacCanvasState)
+  canvasState: customType<{ data: any; default: {} }>({ dataType() { return "jsonb" } })("canvas_state").notNull(),
+  thumbnail: text("thumbnail"), // base64 string
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const designsRelations = relations(designs, ({ one }) => ({
+  user: one(users, {
+    fields: [designs.userId],
+    references: [users.id],
+  }),
+}));
+

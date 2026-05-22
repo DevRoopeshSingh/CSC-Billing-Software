@@ -15,6 +15,13 @@
       "when": 1778897081339,
       "tag": "0001_chunky_slayback",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779429795656,
+      "tag": "0002_free_mathemanic",
+      "breakpoints": true
     }
   ]
 }

@@ -30,6 +30,7 @@ import {
   Moon,
   Monitor,
   BookOpen,
+  Palette,
 } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/lib/auth-context";
@@ -81,6 +82,10 @@ function SidebarNav() {
     {
       label: "Insights",
       items: [{ href: "/reports", label: "Reports", icon: BarChart3 }],
+    },
+    {
+      label: "Tools",
+      items: [{ href: "/studio", label: "Design Studio", icon: Palette }],
     },
     {
       label: "Help",

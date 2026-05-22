@@ -23,6 +23,15 @@ export interface AvnacCanvasState {
   height?: number;
 }
 
+export const avnacCanvasStateSchema = z.object({
+  version: z.string().optional(),
+  objects: z.array(z.record(z.unknown())),
+  background: z.string().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+}).passthrough();
+
+
 // ── Zod schemas for runtime validation of incoming postMessages ───────────────
 
 /**
