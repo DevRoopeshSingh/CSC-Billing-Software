@@ -64,11 +64,11 @@ cp .env.example .env.local
 ### Initialize Database
 
 ```bash
-# Generate Prisma Client
-npm run db:generate
+# Generate Drizzle Client
+npm run db:generate:pg
 
-# Create/apply migrations (uses dev.db by default)
-npm run db:migrate
+# Create/apply migrations (uses Postgres URL by default)
+npm run db:push:pg
 ```
 
 ### Start Development
@@ -347,7 +347,7 @@ npm run lint
 npm run build
 
 # Database validation
-npx prisma validate
+npm run db:generate:pg
 ```
 
 ### Writing Tests
@@ -449,7 +449,7 @@ npm run lint -- --fix
 
 // Good
 // Use transaction to ensure atomicity
-await prisma.$transaction(...)
+await db.transaction(...)
 
 // Bad
 // Loop through items

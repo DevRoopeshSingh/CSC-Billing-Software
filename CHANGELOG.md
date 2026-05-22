@@ -41,9 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - Invoice creation and management
   - PDF generation
   - Backup and restore
-- Offline-first capability
-  - SQLite local database
-  - Full functionality without internet
+- Cloud-connected capability
+  - Supabase Postgres database
+  - Drizzle ORM integration
 - Desktop application
   - Electron packaging for macOS and Windows
   - Auto-update capability

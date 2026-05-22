@@ -302,7 +302,7 @@ Create `.github/CODEOWNERS`:
 *                    @DevRoopeshSingh
 src/app/api/*        @DevRoopeshSingh
 src/components/*     @DevRoopeshSingh
-prisma/*             @DevRoopeshSingh
+drizzle/*            @DevRoopeshSingh
 electron/*           @DevRoopeshSingh
 ```
 
@@ -364,12 +364,12 @@ Closes with initial setup phase.
 
 **Issue 2: Database Features**
 ```
-Title: 🔒 Add SQLite Encryption
+Title: 🔒 Setup Supabase RLS Policies
 Body:
-Consider migrating to sqlcipher for sensitive deployments.
-- [ ] Research sqlcipher integration
-- [ ] Update Prisma config
-- [ ] Test encryption/decryption
+Configure Row Level Security for production safety.
+- [ ] Research Supabase RLS integration
+- [ ] Update Drizzle config
+- [ ] Test policies
 - [ ] Document setup
 
 Type: enhancement
@@ -458,7 +458,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - Initial release
 - Core billing functionality
-- Offline-first capability
+- Cloud-connected capability
 - Electron packaging
 
 ---
@@ -504,14 +504,14 @@ git push origin main  # Or develop, based on your branching strategy
 3. Verify:
    - ✅ Description is set
    - ✅ Homepage/website set (optional)
-   - ✅ Topics added: `electron`, `next-js`, `billing`, `sqlite`
+   - ✅ Topics added: `electron`, `next-js`, `billing`, `supabase`
    - ✅ License is MIT
    - ✅ Discussions enabled (optional)
 
 **Add Topics**:
 1. Go to repository home page
 2. Click "Add topics" in right sidebar
-3. Add: `electron` `next-js` `billing` `sqlite` `electron-app` `react`
+3. Add: `electron` `next-js` `billing` `supabase` `electron-app` `react`
 
 ### 23. ✅ Test Actual Workflow
 

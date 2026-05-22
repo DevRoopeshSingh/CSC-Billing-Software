@@ -34,14 +34,14 @@ We will:
 
 ## Security Considerations
 
-### Offline Operation
-- This application is designed to operate offline
-- **All data stays on the user's device**
-- No data is transmitted to external servers
+### Cloud Operation
+- This application is cloud-connected via Supabase
+- **Data is synchronized with the Postgres backend**
+- Uses Drizzle ORM for data layer operations
 
 ### Data Protection
-- SQLite database stores all data locally
-- Consider enabling SQLite encryption for sensitive deployments
+- Supabase Postgres database stores all data securely in the cloud
+- Utilize Row Level Security (RLS) on Supabase for access control
 - PIN protection is optional for additional security
 
 ### Electron Security

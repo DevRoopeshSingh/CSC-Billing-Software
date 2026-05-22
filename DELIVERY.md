@@ -117,7 +117,7 @@ Runs automatically on version tags (e.g., `git tag v1.0.0`):
 - 🔐 Vulnerability reporting process
 - 📧 Security contact email
 - 🛡️ Supported versions table
-- 💡 Security considerations for offline app
+- 💡 Security considerations for cloud app
 - 📚 Responsible disclosure timeline
 
 **CHANGELOG.md**
@@ -323,7 +323,7 @@ git push origin v0.1.0
 ### SECURITY.md
 - **Reporting**: How to report vulnerabilities
 - **Disclosure**: Timeline for security fixes
-- **Considerations**: Offline-first security implications
+- **Considerations**: Cloud-connected security implications
 - **Updates**: How security patches are handled
 
 ---

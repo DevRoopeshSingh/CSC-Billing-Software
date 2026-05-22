@@ -7,15 +7,15 @@ A powerful, offline-capable desktop billing application built with Electron and 
 
 ## ✨ Features
 
-- **Offline-First**: Full functionality without internet connection
+- **Cloud-Connected**: Secure, real-time access to data via Supabase
 - **Invoice Management**: Create, edit, and print professional invoices
 - **Customer Tracking**: Manage customer details and history
 - **Service Catalog**: Define services with tax rates and pricing
-- **Backup & Restore**: Automated data backup and restoration
-- **Multi-Platform**: macOS and Windows support
+- **Backup & Restore**: Cloud-enabled data backup and restoration
+- **Multi-Platform**: Web, macOS, and Windows support
 - **PIN Security**: Optional PIN protection for sensitive operations
 - **Dark/Light Theme**: User preference persistence
-- **Database**: Local SQLite for fast, reliable operations
+- **Database**: Postgres (Supabase) via Drizzle ORM for reliable operations
 
 ## 🚀 Quick Start
 
@@ -59,15 +59,37 @@ npm run electron:build
 
 ## 🏗️ Architecture
 
+### ⚠️ Architectural Correction Note
+**Current app status**
+The application is cloud-connected, not offline-first. The data layer is powered by Supabase/Postgres combined with Drizzle ORM. Multi-device access and synchronization are natively handled by the cloud backend.
+
+**Original document assumptions**
+Previous documentation incorrectly assumed a 100% offline-capable application built on a local SQLite database with Prisma ORM, relying exclusively on the local file system for data and file storage.
+
+**Key differences**
+*   **Database Stack:** Supabase/Postgres + Drizzle ORM (Current) vs. Local SQLite + Prisma (Old).
+*   **Connectivity:** Cloud-connected and internet-dependent (Current) vs. Offline-first (Old).
+*   **File Handling:** Bucket-based Supabase Storage (Current) vs. Local-only file system storage (Old).
+
+**What must be updated in the document**
+*   Remove all "offline-first" premises, local SQLite constraints, and local backup strategies from feature proposals.
+*   Update file handling architectures (e.g., Document Vaults) to utilize Supabase Storage buckets instead of local directories.
+*   Revise database interaction guidelines to reflect Drizzle ORM and Supabase capabilities.
+
+**Obsolete assumptions in the old document**
+*   **Local Network Sync Tool:** Unnecessary, as the Supabase cloud backend inherently synchronizes data across devices.
+*   **Automated Local Autobackup:** Obsolete, as there is no local SQLite file to copy; backups should rely on Supabase cloud exports.
+*   **App Config Exporter:** Redundant, as configuration state is now centralized in the cloud database.
+
 ### Tech Stack
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| **Desktop** | Electron 41.x | Cross-platform desktop application |
+| **Desktop/Web** | Electron 41.x, Next.js | Cross-platform application |
 | **Frontend** | React 18, Next.js 16 | UI and routing |
 | **Styling** | Tailwind CSS, DaisyUI | Component styling |
 | **Backend** | Next.js API Routes | REST API endpoints |
-| **Database** | SQLite, Prisma ORM | Data persistence |
+| **Database** | Postgres (Supabase), Drizzle ORM | Data persistence |
 | **Build** | Electron Builder | Binary compilation |
 | **Type Safety** | TypeScript 5 | Static type checking |
 | **Code Quality** | ESLint, Next.js built-in | Linting and formatting |
@@ -103,15 +125,13 @@ npm run electron:build
 
 ### Database Schema
 
-The application uses SQLite with Prisma ORM:
+The application uses Postgres (Supabase) with Drizzle ORM:
 
 - **CenterProfile**: Business center configuration, branding, counters
 - **Service**: Offered services with pricing and tax rates
 - **Customer**: Customer contact information
 - **Invoice**: Invoice records with totals and status
 - **InvoiceItem**: Individual line items within invoices
-
-See `prisma/schema.prisma` for the complete schema.
 
 ## 📚 API Documentation
 
@@ -238,7 +258,8 @@ We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for de
 ## 📦 Dependencies
 
 ### Production
-- `@prisma/client@^5.13.0` - Database ORM
+- `drizzle-orm@^0.36.4` - Database ORM
+- `postgres@^3.4.5` - Postgres client
 - `next@^16.1.7` - React framework
 - `react@^18` - UI library
 - `electron@^41.0.3` - Desktop runtime
@@ -249,7 +270,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for de
 ### Development
 - `typescript@^5` - Type checking
 - `eslint@^8` - Code linting
-- `prisma@^5.13.0` - Database toolkit
+- `drizzle-kit@^0.28.1` - Database toolkit
 
 ## 📄 License
 

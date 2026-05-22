@@ -55,10 +55,10 @@ All files and documentation are already created in your repository. Follow these
 ## Phase 5: Repository Details (2 min)
 
 1. **Repository home page** → Click "Add topics"
-   - Add: `electron`, `next-js`, `billing`, `sqlite`, `react`
+   - Add: `electron`, `next-js`, `billing`, `supabase`, `react`, `drizzle`
 
 2. **Settings** → **General**
-   - Set Description: "Offline-capable desktop billing software for Digital Service Centers"
+   - Set Description: "Cloud-connected desktop billing software for Digital Service Centers"
    - Set License: **MIT**
 
 ---

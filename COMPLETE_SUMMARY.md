@@ -185,7 +185,7 @@ A complete, **production-ready, copy-paste-ready** package with:
 - Security contact email template
 - Supported versions table
 - Security update timeline
-- Offline-app security considerations
+- Cloud-app security considerations
 
 **CHANGELOG.md** (117 lines)
 - Unreleased changes section

@@ -150,7 +150,7 @@ Release Process     → How to release
 Reporting Vulnerabilities → How to report
 Supported Versions        → Version support
 Security Updates          → Release timeline
-Security Considerations   → Offline app safety
+Security Considerations   → Cloud app safety
 Responsible Disclosure    → Security timeline
 Resources                 → Security links
 ```
@@ -206,9 +206,9 @@ Settings → Code security and analysis
 ### Step 5: Repository Details
 ```
 Repository Home
-├── Add topics: electron, next-js, billing, sqlite, react
+├── Add topics: electron, next-js, billing, supabase, react
 └── Settings → General
-    ├── Description: "Offline-capable desktop billing software..."
+    ├── Description: "Cloud-connected desktop billing software..."
     └── License: MIT
 ```
 
