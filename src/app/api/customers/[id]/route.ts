@@ -34,5 +34,5 @@ export const PATCH = withAuth(
 
 export const DELETE = withAuth(
   { access: { auth: "session", roles: ADMIN_ONLY, requirePin: true } },
-  async ({ params }) => deleteCustomer(parseId(params))
+  async ({ params, session }) => deleteCustomer(parseId(params), session!.userId)
 );

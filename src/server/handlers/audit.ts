@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, and, eq, gte, lte } from "drizzle-orm";
 import { getDb, schema } from "../db";
 
 export type AuditLogInput = {
@@ -20,13 +20,31 @@ export async function logAudit(input: AuditLogInput) {
   });
 }
 
-export async function listAuditLogs(limit: number = 50) {
+export interface AuditLogFilters {
+  limit?: number;
+  action?: string;
+  entityType?: string;
+  userId?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export async function listAuditLogs(filters: AuditLogFilters = {}) {
   const db = getDb();
+
+  const conditions = [];
+  if (filters.action) conditions.push(eq(schema.auditLogs.action, filters.action));
+  if (filters.entityType) conditions.push(eq(schema.auditLogs.entityType, filters.entityType));
+  if (filters.userId) conditions.push(eq(schema.auditLogs.userId, filters.userId));
+  if (filters.startDate) conditions.push(gte(schema.auditLogs.createdAt, new Date(filters.startDate)));
+  if (filters.endDate) conditions.push(lte(schema.auditLogs.createdAt, new Date(filters.endDate)));
+
   const rows = await db.query.auditLogs.findMany({
+    where: conditions.length > 0 ? and(...conditions) : undefined,
     orderBy: [desc(schema.auditLogs.createdAt)],
-    limit,
+    limit: filters.limit ?? 200,
     with: {
-      user: true, // We need to add relations in schema for user
+      user: true,
     },
   });
   

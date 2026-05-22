@@ -7,6 +7,7 @@ import { and, eq, sql, getTableColumns } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { customerSchema } from "@/shared/types";
 import { z } from "zod";
+import { logAudit } from "./audit";
 
 const notCancelled = sql`${schema.invoices.status} != 'CANCELLED'`;
 
@@ -78,6 +79,15 @@ export async function createCustomer(input: CustomerCreateInput, userId: number)
     .insert(schema.customers)
     .values({ ...input, createdBy: userId, updatedBy: userId })
     .returning();
+    
+  await logAudit({
+    userId,
+    action: "CREATE",
+    entityType: "CUSTOMER",
+    entityId: String(row.id),
+    details: { name: row.name, mobile: row.mobile },
+  });
+  
   return row;
 }
 
@@ -97,11 +107,32 @@ export async function updateCustomer(
     .set({ ...input, updatedBy: userId })
     .where(eq(schema.customers.id, id))
     .returning();
+    
+  if (row) {
+    await logAudit({
+      userId,
+      action: "UPDATE",
+      entityType: "CUSTOMER",
+      entityId: String(row.id),
+      details: input,
+    });
+  }
+  
   return row ?? null;
 }
 
-export async function deleteCustomer(id: number): Promise<{ success: true }> {
+export async function deleteCustomer(id: number, userId: number): Promise<{ success: true }> {
   const db = getDb();
-  await db.delete(schema.customers).where(eq(schema.customers.id, id));
+  const [row] = await db.select().from(schema.customers).where(eq(schema.customers.id, id)).limit(1);
+  if (row) {
+    await db.delete(schema.customers).where(eq(schema.customers.id, id));
+    await logAudit({
+      userId,
+      action: "DELETE",
+      entityType: "CUSTOMER",
+      entityId: String(id),
+      details: { name: row.name, mobile: row.mobile },
+    });
+  }
   return { success: true };
 }

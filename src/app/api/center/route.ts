@@ -20,5 +20,5 @@ export const PATCH = withAuth(
     access: { auth: "session", roles: ADMIN_ONLY },
     body: centerUpdateInputSchema,
   },
-  async ({ payload }) => updateCenterProfile(payload)
+  async ({ payload, session }) => updateCenterProfile(payload, session!.userId)
 );

@@ -13,6 +13,7 @@ import {
   recordLoginFailure,
   clearLoginFailures,
 } from "../auth/rate-limit";
+import { logAudit } from "./audit";
 import type {
   LoginRequest,
   SetupRequest,
@@ -93,16 +94,39 @@ export async function login(data: LoginRequest): Promise<AuthSuccess> {
 
   if (!user || !user.isActive) {
     recordLoginFailure(data.username);
+    await logAudit({
+      userId: user?.id ?? null,
+      action: "LOGIN",
+      entityType: "AUTH",
+      entityId: data.username,
+      details: { username: data.username, result: "FAILED", reason: "Invalid user" },
+    });
     throw new Error("Invalid username or password");
   }
   const ok = await verifyPin(data.password, user.passwordHash);
   if (!ok) {
     recordLoginFailure(data.username);
+    await logAudit({
+      userId: user.id,
+      action: "LOGIN",
+      entityType: "AUTH",
+      entityId: data.username,
+      details: { username: data.username, result: "FAILED", reason: "Invalid password" },
+    });
     throw new Error("Invalid username or password");
   }
   clearLoginFailures(data.username);
   const role = user.role as Role;
   const token = await createSession(user.id, role);
+  
+  await logAudit({
+    userId: user.id,
+    action: "LOGIN",
+    entityType: "AUTH",
+    entityId: String(user.id),
+    details: { username: user.username, result: "SUCCESS" },
+  });
+  
   return {
     token,
     user: { id: user.id, username: user.username, role },

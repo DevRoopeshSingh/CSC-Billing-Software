@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
-import { Loader2, ShieldCheck, User, Tag, Clock } from "lucide-react";
+import { Loader2, ShieldCheck, User, Tag, Clock, Download, Filter } from "lucide-react";
 
 interface AuditLog {
   id: number;
@@ -23,21 +23,64 @@ export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Filters
+  const [actionFilter, setActionFilter] = useState("");
+  const [entityFilter, setEntityFilter] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   useEffect(() => {
     if (currentUser?.role !== "admin") return;
     loadLogs();
-  }, [currentUser]);
+  }, [currentUser, actionFilter, entityFilter, startDate, endDate]);
 
   const loadLogs = async () => {
     try {
       setLoading(true);
-      const data = await api.get<AuditLog[]>("/api/audit");
+      const params = new URLSearchParams();
+      if (actionFilter) params.append("action", actionFilter);
+      if (entityFilter) params.append("entityType", entityFilter);
+      if (startDate) params.append("startDate", startDate);
+      if (endDate) params.append("endDate", endDate);
+      
+      const data = await api.get<AuditLog[]>(`/api/audit?${params.toString()}`);
       setLogs(data);
     } catch (err) {
       toast("Failed to load audit logs", "error");
     } finally {
       setLoading(false);
     }
+  };
+
+  const exportCSV = () => {
+    if (logs.length === 0) {
+      toast("No logs to export", "error");
+      return;
+    }
+
+    const headers = ["Timestamp", "User", "Action", "Entity Type", "Entity ID", "Details"];
+    const rows = logs.map(log => [
+      new Date(log.createdAt).toISOString(),
+      log.user ? log.user.name : "System",
+      log.action,
+      log.entityType,
+      log.entityId,
+      JSON.stringify(log.details || {}).replace(/"/g, '""')
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => `"${row.join('","')}"`)
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `audit_logs_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (currentUser?.role !== "admin") {
@@ -63,6 +106,84 @@ export default function AuditLogsPage() {
             Immutable timeline of significant system actions.
           </p>
         </div>
+        <button
+          onClick={exportCSV}
+          disabled={loading || logs.length === 0}
+          className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" />
+          Export CSV
+        </button>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card shadow-sm p-4 flex flex-wrap gap-4 items-end">
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground w-full sm:w-auto mb-2 sm:mb-0">
+          <Filter className="h-4 w-4" /> Filters:
+        </div>
+        
+        <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+          <label className="text-xs font-medium text-muted-foreground">Action</label>
+          <select 
+            value={actionFilter} 
+            onChange={(e) => setActionFilter(e.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+          >
+            <option value="">All Actions</option>
+            <option value="CREATE">CREATE</option>
+            <option value="UPDATE">UPDATE</option>
+            <option value="DELETE">DELETE</option>
+            <option value="LOGIN">LOGIN</option>
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+          <label className="text-xs font-medium text-muted-foreground">Entity Type</label>
+          <select 
+            value={entityFilter} 
+            onChange={(e) => setEntityFilter(e.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+          >
+            <option value="">All Entities</option>
+            <option value="INVOICE">INVOICE</option>
+            <option value="CUSTOMER">CUSTOMER</option>
+            <option value="SETTINGS">SETTINGS</option>
+            <option value="AUTH">AUTH</option>
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+          <label className="text-xs font-medium text-muted-foreground">From Date</label>
+          <input 
+            type="date" 
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+          <label className="text-xs font-medium text-muted-foreground">To Date</label>
+          <input 
+            type="date" 
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+          />
+        </div>
+        
+        {(actionFilter || entityFilter || startDate || endDate) && (
+          <button 
+            onClick={() => {
+              setActionFilter("");
+              setEntityFilter("");
+              setStartDate("");
+              setEndDate("");
+            }}
+            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 ml-2 pb-2"
+          >
+            Clear Filters
+          </button>
+        )}
       </div>
 
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
@@ -87,7 +208,7 @@ export default function AuditLogsPage() {
             ) : logs.length === 0 ? (
               <tr>
                 <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                  No audit logs found.
+                  No audit logs found matching criteria.
                 </td>
               </tr>
             ) : (
@@ -114,6 +235,7 @@ export default function AuditLogsPage() {
                       log.action === "CREATE" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
                       log.action === "UPDATE" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" :
                       log.action === "DELETE" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+                      log.action === "LOGIN" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" :
                       "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
                     }`}>
                       {log.action}

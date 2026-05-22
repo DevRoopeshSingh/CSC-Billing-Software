@@ -9,6 +9,7 @@ import { z } from "zod";
 import { getDb, schema } from "../db";
 import { hashPin, verifyPin } from "@/lib/pin";
 import { PaymentMode } from "@/shared/types";
+import { logAudit } from "./audit";
 
 type CenterRow = typeof schema.centerProfiles.$inferSelect;
 
@@ -94,7 +95,8 @@ export const centerUpdateInputSchema = z
 export type CenterUpdateInput = z.infer<typeof centerUpdateInputSchema>;
 
 export async function updateCenterProfile(
-  input: CenterUpdateInput
+  input: CenterUpdateInput,
+  userId: number
 ): Promise<CenterProfileShape | null> {
   const db = getDb();
   // numeric column needs a string; everything else is straight passthrough.
@@ -107,6 +109,16 @@ export async function updateCenterProfile(
     .set(patch)
     .where(eq(schema.centerProfiles.id, 1))
     .returning();
+    
+  if (row) {
+    await logAudit({
+      userId,
+      action: "UPDATE",
+      entityType: "SETTINGS",
+      entityId: "center_profile",
+      details: Object.keys(input), // Log what fields were changed
+    });
+  }
   return row ? serializeCenter(row) : null;
 }
 
