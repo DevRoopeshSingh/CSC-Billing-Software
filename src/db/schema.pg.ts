@@ -241,7 +241,7 @@ export const designs = pgTable("designs", {
   name: text("name").notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   // JSON representation of the Fabric canvas state (AvnacCanvasState)
-  canvasState: customType<{ data: any; default: {} }>({ dataType() { return "jsonb" } })("canvas_state").notNull(),
+  canvasState: customType<{ data: any; default: false }>({ dataType() { return "jsonb" } })("canvas_state").notNull(),
   thumbnail: text("thumbnail"), // base64 string
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

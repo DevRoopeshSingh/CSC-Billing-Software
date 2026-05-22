@@ -96,14 +96,14 @@ export async function POST(req: Request) {
         .set({
           canvasState: parsedData,
           updatedAt: new Date(),
-          name: parsedData.name || existing[0].name,
+          name: typeof (parsedData as any).name === 'string' && (parsedData as any).name.trim() !== '' ? (parsedData as any).name : existing[0].name,
         })
         .where(eq(designs.id, designId));
     } else {
       await db.insert(designs).values({
         id: designId,
         userId: sessionUser.id,
-        name: parsedData.name || `Design ${new Date().toLocaleTimeString()}`,
+        name: typeof (parsedData as any).name === 'string' && (parsedData as any).name.trim() !== '' ? (parsedData as any).name : `Design ${new Date().toLocaleTimeString()}`,
         canvasState: parsedData,
       });
     }
