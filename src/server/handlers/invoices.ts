@@ -6,7 +6,7 @@
 // recomputed server-side from qty/rate/taxRate — never trusted from the
 // client.
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../db";
 import {
@@ -14,6 +14,7 @@ import {
   bulkMarkPaidSchema,
   type BulkMarkPaidResult,
 } from "@/shared/types";
+import { logAudit } from "./audit";
 
 type InvoiceRow = typeof schema.invoices.$inferSelect;
 type InvoiceItemRow = typeof schema.invoiceItems.$inferSelect;
@@ -172,7 +173,7 @@ export async function createInvoice(
   userId: number
 ): Promise<{ id: number; invoiceNo: string }> {
   const db = getDb();
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     // 1. Resolve customer (existing or create new).
     let customerId = input.customerId;
     if (!customerId && input.newCustomer) {
@@ -212,7 +213,8 @@ export async function createInvoice(
     )}`;
 
     // 3. Compute totals server-side. Anything the client sent is ignored.
-    const discount = input.discount ?? 0;
+    const pointsRedeemed = input.pointsRedeemed ?? 0;
+    const discount = (input.discount ?? 0) + pointsRedeemed;
     const { lines, subtotal, taxTotal, total } = computeTotals(
       input.items.map((it) => ({
         qty: it.qty,
@@ -263,8 +265,50 @@ export async function createInvoice(
       .set({ invoiceNumber: seq })
       .where(eq(schema.centerProfiles.id, 1));
 
-    return { id: invoice.id, invoiceNo: invoice.invoiceNo };
+    // 7. Handle Loyalty Points
+    // Earn 1 point per 100 INR spent
+    const pointsEarned = Math.floor(total / 100);
+
+    if (pointsRedeemed > 0) {
+      await tx.insert(schema.loyaltyTransactions).values({
+        customerId,
+        invoiceId: invoice.id,
+        points: -pointsRedeemed,
+        type: "REDEEMED",
+      });
+    }
+
+    if (pointsEarned > 0 && input.status === "PAID") {
+      await tx.insert(schema.loyaltyTransactions).values({
+        customerId,
+        invoiceId: invoice.id,
+        points: pointsEarned,
+        type: "EARNED",
+      });
+    }
+
+    const netPoints = (input.status === "PAID" ? pointsEarned : 0) - pointsRedeemed;
+    if (netPoints !== 0) {
+      await tx
+        .update(schema.customers)
+        .set({
+          loyaltyPoints: sql`${schema.customers.loyaltyPoints} + ${netPoints}`,
+        })
+        .where(eq(schema.customers.id, customerId));
+    }
+
+    return { id: invoice.id, invoiceNo: invoice.invoiceNo, total: invoice.total, customerId: invoice.customerId };
   });
+  
+  await logAudit({
+    userId,
+    action: "CREATE",
+    entityType: "INVOICE",
+    entityId: String(result.id),
+    details: { invoiceNo: result.invoiceNo, total: result.total, customerId: result.customerId },
+  });
+
+  return { id: result.id, invoiceNo: result.invoiceNo };
 }
 
 export const updateInvoiceInputSchema = createInvoiceSchema;
@@ -281,7 +325,7 @@ export async function updateInvoice(
     );
   }
   const db = getDb();
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select()
       .from(schema.invoices)
@@ -309,7 +353,8 @@ export async function updateInvoice(
       throw new Error("customerId or newCustomer required");
     }
 
-    const discount = input.discount ?? 0;
+    const pointsRedeemed = input.pointsRedeemed ?? 0;
+    const discount = (input.discount ?? 0) + pointsRedeemed;
     const { lines, subtotal, taxTotal, total } = computeTotals(
       input.items.map((it) => ({
         qty: it.qty,
@@ -358,6 +403,16 @@ export async function updateInvoice(
 
     return { id, invoiceNo: existing.invoiceNo };
   });
+
+  await logAudit({
+    userId,
+    action: "UPDATE",
+    entityType: "INVOICE",
+    entityId: String(id),
+    details: { invoiceNo: result.invoiceNo },
+  });
+
+  return result;
 }
 
 // PAID|PENDING only. Cancellation lives on its own route so admin+PIN is
@@ -379,6 +434,17 @@ export async function setInvoiceStatus(
     .set({ status: input.status, updatedBy: userId })
     .where(eq(schema.invoices.id, id))
     .returning();
+    
+  if (row) {
+    await logAudit({
+      userId,
+      action: "UPDATE",
+      entityType: "INVOICE",
+      entityId: String(id),
+      details: { status: input.status, invoiceNo: row.invoiceNo },
+    });
+  }
+
   return row ? serializeInvoice(row) : null;
 }
 
@@ -387,19 +453,60 @@ export async function cancelInvoice(
   userId: number
 ): Promise<InvoiceShape | null> {
   const db = getDb();
-  const [row] = await db
-    .update(schema.invoices)
-    .set({ status: "CANCELLED", updatedBy: userId })
-    .where(eq(schema.invoices.id, id))
-    .returning();
-  return row ? serializeInvoice(row) : null;
+  
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(schema.invoices)
+      .set({ status: "CANCELLED", updatedBy: userId })
+      .where(eq(schema.invoices.id, id))
+      .returning();
+      
+    if (row) {
+      // Revert loyalty points earned for this invoice
+      const earnedTxs = await tx
+        .select()
+        .from(schema.loyaltyTransactions)
+        .where(and(
+          eq(schema.loyaltyTransactions.invoiceId, id),
+          eq(schema.loyaltyTransactions.type, "EARNED")
+        ));
+        
+      for (const t of earnedTxs) {
+        await tx.insert(schema.loyaltyTransactions).values({
+          customerId: row.customerId,
+          invoiceId: id,
+          points: -t.points,
+          type: "MANUAL_ADJUSTMENT",
+        });
+        
+        await tx
+          .update(schema.customers)
+          .set({ loyaltyPoints: sql`${schema.customers.loyaltyPoints} - ${t.points}` })
+          .where(eq(schema.customers.id, row.customerId));
+      }
+    
+      await logAudit({
+        userId,
+        action: "CANCEL",
+        entityType: "INVOICE",
+        entityId: String(id),
+        details: { invoiceNo: row.invoiceNo },
+      });
+    }
+    return row ? serializeInvoice(row) : null;
+  });
 }
 
 export async function deleteInvoice(id: number): Promise<{ success: true }> {
   const db = getDb();
-  // invoice_items.invoice_id has ON DELETE CASCADE — items vanish with the
-  // parent in a single DELETE.
   await db.delete(schema.invoices).where(eq(schema.invoices.id, id));
+  await logAudit({
+    userId: null, // deleteInvoice doesn't take userId currently, but we'll leave it null or modify deleteInvoice
+    action: "DELETE",
+    entityType: "INVOICE",
+    entityId: String(id),
+    details: {},
+  });
   return { success: true };
 }
 

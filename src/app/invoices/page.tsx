@@ -10,6 +10,7 @@ import { api, ApiError } from "@/lib/api-client";
 import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
 import type { InvoiceDetail } from "@/shared/types";
+import { IPC } from "@/shared/ipc-channels";
 import {
   buildCsv,
   downloadCsv,
@@ -24,6 +25,7 @@ import {
   Filter,
   ChevronDown,
   Download,
+  Archive,
   MessageCircle,
 } from "lucide-react";
 import { useCanWrite } from "@/lib/permissions";
@@ -172,6 +174,44 @@ function InvoicesContent() {
           >
             <Download className="h-4 w-4" />
             Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              if (filtered.length === 0) {
+                toast("No invoices to export", "info");
+                return;
+              }
+              const ids = filtered.map(i => i.id!);
+              setLoading(true);
+              try {
+                const res = await window.ipc?.invoke(IPC.INVOICES_EXPORT_ZIP, ids) as any;
+                if (!res) {
+                  toast("Export failed: Desktop environment required", "error");
+                  return;
+                }
+                if (res.cancelled) {
+                  toast("Export cancelled", "info");
+                } else {
+                  toast(`Exported ${res.count} PDFs to ${res.path}`, "success");
+                }
+              } catch (err) {
+                toast(err instanceof Error ? err.message : "Failed to export PDFs", "error");
+              } finally {
+                setLoading(false);
+                // Reload invoices just in case something was printed/marked
+                loadInvoices();
+              }
+            }}
+            disabled={loading}
+            className={cn(
+              "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5",
+              "text-[13px] font-medium text-foreground transition-colors hover:bg-background",
+              "disabled:cursor-not-allowed disabled:opacity-60"
+            )}
+          >
+            <Archive className="h-4 w-4" />
+            Export PDFs (ZIP)
           </button>
           {canWrite && (
             <Link

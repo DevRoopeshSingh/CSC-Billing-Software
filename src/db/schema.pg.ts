@@ -14,6 +14,7 @@ import {
   timestamp,
   index,
   customType,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -115,6 +116,7 @@ export const customers = pgTable("customers", {
   email: text("email").notNull().default(""),
   address: text("address").notNull().default(""),
   tags: text("tags").notNull().default(""),
+  loyaltyPoints: integer("loyalty_points").notNull().default(0),
   createdBy: integer("created_by").references(() => users.id),
   updatedBy: integer("updated_by").references(() => users.id),
 });
@@ -300,5 +302,50 @@ export const shiftHandoversRelations = relations(shiftHandovers, ({ one }) => ({
   creator: one(users, {
     fields: [shiftHandovers.createdBy],
     references: [users.id],
+  }),
+}));
+
+// Phase 4: Audit Logs
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+}));
+
+// Phase 4: Customer Loyalty Transactions
+export const loyaltyTransactions = pgTable("loyalty_transactions", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id")
+    .notNull()
+    .references(() => customers.id),
+  invoiceId: integer("invoice_id").references(() => invoices.id),
+  points: integer("points").notNull(),
+  type: text("type").notNull(), // 'EARNED', 'REDEEMED', 'MANUAL_ADJUSTMENT'
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const loyaltyTransactionsRelations = relations(loyaltyTransactions, ({ one }) => ({
+  customer: one(customers, {
+    fields: [loyaltyTransactions.customerId],
+    references: [customers.id],
+  }),
+  invoice: one(invoices, {
+    fields: [loyaltyTransactions.invoiceId],
+    references: [invoices.id],
   }),
 }));

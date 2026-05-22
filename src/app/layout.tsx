@@ -33,6 +33,7 @@ import {
   Palette,
   Receipt,
   Clock,
+  ShieldCheck,
 } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/lib/auth-context";
@@ -104,6 +105,7 @@ function SidebarNav() {
       label: "System",
       items: [
         { href: "/settings/users", label: "Users & Roles", icon: UserCog, roles: ["admin"] },
+        { href: "/settings/audit", label: "Audit Logs", icon: ShieldCheck, roles: ["admin"] },
         ...(hasBridge ? [{ href: "/settings/backup", label: "Backup", icon: HardDrive, roles: ["admin"] }] : []),
         { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] },
       ],

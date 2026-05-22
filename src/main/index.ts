@@ -10,6 +10,7 @@ import { spawn, ChildProcess } from "child_process";
 import { autoUpdater } from "electron-updater";
 import { eq, desc, and, gte, lte, sql, getTableColumns } from "drizzle-orm";
 import { z } from "zod";
+import AdmZip from "adm-zip";
 import { initDatabase, getDb, getSqlite, closeDatabase } from "../db";
 import * as schema from "../db/schema";
 import { IPC } from "../shared/ipc-channels";
@@ -2087,6 +2088,92 @@ function registerIpcHandlers() {
       return { path: tmpPath };
     }
   );
+
+  // ── Bulk PDF Export (ZIP) ───────────────────────────────────────────────
+  safeHandle(IPC.INVOICES_EXPORT_ZIP, { auth: "session", roles: STAFF_PLUS }, async (_ctx, rawIds) => {
+    const ids = z.array(z.number().int().positive()).parse(rawIds);
+    if (ids.length === 0) throw new Error("No invoices selected for export");
+
+    // We generate into a temporary directory so we don't pollute the user's filesystem
+    // until they pick a final save location.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "csc-bulk-export-"));
+    const zip = new AdmZip();
+
+    try {
+      let count = 0;
+      for (const id of ids) {
+        const invoice = db.query.invoices
+          .findFirst({
+            where: eq(schema.invoices.id, id),
+            with: { customer: true, items: { with: { service: true } } },
+          })
+          .sync();
+        if (!invoice) continue;
+
+        const center = db
+          .select()
+          .from(schema.centerProfiles)
+          .where(eq(schema.centerProfiles.id, 1))
+          .get() ?? null;
+
+        const resolveBranding = (name: string | null | undefined): string | null => {
+          if (!name) return null;
+          if (name.includes("/") || name.includes("\\") || name.includes("..")) {
+            return null;
+          }
+          const full = path.join(uploadsPath, name);
+          return fs.existsSync(full) ? full : null;
+        };
+        const centerForPdf = center
+          ? {
+              ...center,
+              logoFile: resolveBranding(center.logoPath),
+              upiQrFile: resolveBranding(center.upiQrPath),
+            }
+          : null;
+
+        const safeName = invoice.invoiceNo.replace(/[^A-Za-z0-9_-]/g, "_");
+        const tmpPath = path.join(tmpDir, `${safeName}.pdf`);
+        await generateInvoicePdf(invoice, centerForPdf, tmpPath);
+        
+        // Add local file to zip
+        zip.addLocalFile(tmpPath);
+        count++;
+      }
+
+      if (count === 0) throw new Error("Could not generate any PDFs");
+
+      const d = new Date();
+      const timestamp = `${d.getFullYear()}${(d.getMonth() + 1).toString().padStart(2, "0")}${d.getDate().toString().padStart(2, "0")}_${d.getHours().toString().padStart(2, "0")}${d.getMinutes().toString().padStart(2, "0")}`;
+      const defaultPath = path.join(
+        app.getPath("downloads"),
+        `Invoices_Export_${timestamp}.zip`
+      );
+
+      let outPath = defaultPath;
+      if (mainWindow) {
+        const result = await dialog.showSaveDialog(mainWindow, {
+          title: "Save Invoices ZIP",
+          defaultPath,
+          filters: [{ name: "ZIP Archives", extensions: ["zip"] }],
+        });
+        if (result.canceled || !result.filePath) {
+          return { cancelled: true };
+        }
+        outPath = result.filePath;
+      }
+
+      zip.writeZip(outPath);
+      return { path: outPath, count };
+    } finally {
+      // Clean up temp directory
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch (err) {
+        console.error("Failed to clean up temp export directory:", err);
+      }
+    }
+  });
 
   // Reports
   safeHandle(IPC.REPORTS_DAILY, { auth: "session", roles: ANY_AUTHED }, (_ctx, dateStr) => {

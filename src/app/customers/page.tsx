@@ -301,6 +301,10 @@ export default function CustomersPage() {
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Billed</span>
                         <span className="font-semibold text-emerald-600 text-[13px]">₹{(c.totalBilled ?? 0).toFixed(2)}</span>
                       </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Points</span>
+                        <span className="font-semibold text-purple-600 text-[13px]">{c.loyaltyPoints ?? 0}</span>
+                      </div>
                       <div className="flex items-center justify-end gap-2">
                         {canWrite && (
                           <>
@@ -366,6 +370,9 @@ export default function CustomersPage() {
                   </th>
                   <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right">
                     Total Billed
+                  </th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right">
+                    Pts
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Actions
@@ -458,6 +465,9 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-6 py-4 text-right font-medium text-emerald-600">
                       ₹{(c.totalBilled ?? 0).toFixed(2)}
+                    </td>
+                    <td className="px-6 py-4 text-right font-medium text-purple-600">
+                      {c.loyaltyPoints ?? 0}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1.5">

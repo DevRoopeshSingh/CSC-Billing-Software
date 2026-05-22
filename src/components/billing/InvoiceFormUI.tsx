@@ -28,6 +28,7 @@ interface InvoiceFormUIProps {
     setNewName: (v: string) => void;
     setNewMobile: (v: string) => void;
     setDiscount: (v: number) => void;
+    setPointsRedeemed: (v: number) => void;
     setPaymentMode: (v: "Cash" | "UPI" | "Card" | "Other") => void;
     setNotes: (v: string) => void;
     setCustomerNotes: (v: string) => void;
@@ -583,6 +584,28 @@ export function InvoiceFormUI({
                 className="w-24 rounded-md border border-border bg-card px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
               />
             </div>
+            {state.selectedCustomer && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground flex flex-col">
+                  <span>Redeem Points</span>
+                  <span className="text-[10px]">Max: {state.selectedCustomer.loyaltyPoints ?? 0}</span>
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max={state.selectedCustomer.loyaltyPoints ?? 0}
+                  step="1"
+                  value={state.pointsRedeemed ?? 0}
+                  onChange={(e) => {
+                    const val = Math.min(Number(e.target.value), state.selectedCustomer?.loyaltyPoints ?? 0);
+                    actions.setPointsRedeemed(val);
+                    // Also increase discount by redeemed points? Yes.
+                    // Assuming 1 point = 1 INR
+                  }}
+                  className="w-24 rounded-md border border-border bg-card px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                />
+              </div>
+            )}
             <div className="my-2 border-t border-border" />
             <div className="flex justify-between text-lg font-bold">
               <span className="text-foreground">Total</span>

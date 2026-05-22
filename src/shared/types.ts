@@ -211,6 +211,7 @@ export const customerSchema = z.object({
   email: z.string().email().or(z.literal("")).default(""),
   address: z.string().default(""),
   tags: z.string().default(""),
+  loyaltyPoints: z.number().int().default(0),
   createdBy: z.number().int().positive().nullable().optional(),
   updatedBy: z.number().int().positive().nullable().optional(),
 });
@@ -285,6 +286,7 @@ export const createInvoiceSchema = z.object({
   status: InvoiceStatus.optional(),
   notes: z.string().optional(),
   customerNotes: z.string().optional(),
+  pointsRedeemed: z.number().int().nonnegative().optional(),
 });
 
 export type CreateInvoiceRequest = z.infer<typeof createInvoiceSchema>;
