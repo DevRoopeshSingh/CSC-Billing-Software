@@ -15,6 +15,13 @@
       "when": 1779460134289,
       "tag": "0001_small_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1779460454395,
+      "tag": "0002_regular_young_avengers",
+      "breakpoints": true
     }
   ]
 }
