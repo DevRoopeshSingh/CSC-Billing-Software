@@ -70,6 +70,58 @@ export async function getReportSummary(
       )
     );
 
+  const statusResult = await db
+    .select({
+      status: schema.invoices.status,
+      count: sql<number>`count(*)::int`,
+      total: sql<number>`coalesce(sum(${schema.invoices.total}), 0)::numeric`,
+    })
+    .from(schema.invoices)
+    .where(
+      and(
+        gte(schema.invoices.createdAt, startDate),
+        lte(schema.invoices.createdAt, endDate)
+      )
+    )
+    .groupBy(schema.invoices.status);
+
+  const byStatus: Record<"PAID" | "PENDING" | "CANCELLED", { count: number; total: number }> = {
+    PAID: { count: 0, total: 0 },
+    PENDING: { count: 0, total: 0 },
+    CANCELLED: { count: 0, total: 0 },
+  };
+
+  for (const row of statusResult) {
+    if (row.status === "PAID" || row.status === "PENDING" || row.status === "CANCELLED") {
+      byStatus[row.status] = {
+        count: Number(row.count),
+        total: Number(row.total),
+      };
+    }
+  }
+
+  const paymentResult = await db
+    .select({
+      paymentMode: schema.invoices.paymentMode,
+      count: sql<number>`count(*)::int`,
+      total: sql<number>`coalesce(sum(${schema.invoices.total}), 0)::numeric`,
+    })
+    .from(schema.invoices)
+    .where(
+      and(
+        gte(schema.invoices.createdAt, startDate),
+        lte(schema.invoices.createdAt, endDate),
+        ne(schema.invoices.status, "CANCELLED")
+      )
+    )
+    .groupBy(schema.invoices.paymentMode);
+
+  const byPaymentMode = paymentResult.map((row) => ({
+    paymentMode: row.paymentMode,
+    count: Number(row.count),
+    total: Number(row.total),
+  }));
+
   const row = result[0];
   return {
     totals: {
@@ -79,7 +131,9 @@ export async function getReportSummary(
       discount: Number(row?.discount ?? 0),
       revenue: Number(row?.revenue ?? 0),
     },
-  };
+    byStatus,
+    byPaymentMode,
+  } as ReportSummary;
 }
 
 /**
