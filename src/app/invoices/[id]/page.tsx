@@ -476,6 +476,22 @@ export default function InvoiceDetailPage() {
                 {formatCurrency(invoice.total)}
               </dd>
             </div>
+            {invoice.advancePayment > 0 && (
+              <>
+                <div className="flex justify-between mt-1">
+                  <dt className="text-muted-foreground">Advance Payment</dt>
+                  <dd className="font-medium text-foreground">
+                    − {formatCurrency(invoice.advancePayment)}
+                  </dd>
+                </div>
+                <div className="flex justify-between border-t border-border pt-2 mt-1">
+                  <dt className="text-sm font-semibold text-rose-600">Balance Due</dt>
+                  <dd className="text-base font-bold text-rose-600">
+                    {formatCurrency(invoice.balanceAmount)}
+                  </dd>
+                </div>
+              </>
+            )}
           </dl>
         </div>
       </div>

@@ -143,6 +143,12 @@ export const invoices = pgTable(
       .notNull()
       .default("0"),
     total: numeric("total", { precision: 12, scale: 2 }).notNull(),
+    advancePayment: numeric("advance_payment", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
+    balanceAmount: numeric("balance_amount", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
     paymentMode: text("payment_mode").notNull().default("Cash"),
     status: text("status").notNull().default("PAID"),
     notes: text("notes"),

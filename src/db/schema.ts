@@ -100,6 +100,8 @@ export const invoices = sqliteTable("invoices", {
   taxTotal: real("tax_total").notNull().default(0),
   discount: real("discount").notNull().default(0),
   total: real("total").notNull(),
+  advancePayment: real("advance_payment").notNull().default(0),
+  balanceAmount: real("balance_amount").notNull().default(0),
   paymentMode: text("payment_mode").notNull().default("Cash"),
   status: text("status").notNull().default("PAID"),
   notes: text("notes"),

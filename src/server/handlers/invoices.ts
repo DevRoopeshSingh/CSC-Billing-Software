@@ -30,6 +30,8 @@ export interface InvoiceShape {
   taxTotal: number;
   discount: number;
   total: number;
+  advancePayment: number;
+  balanceAmount: number;
   paymentMode: string;
   status: string;
   notes: string | null;
@@ -79,6 +81,8 @@ function serializeInvoice(row: InvoiceRow): InvoiceShape {
     taxTotal: Number(row.taxTotal),
     discount: Number(row.discount),
     total: Number(row.total),
+    advancePayment: Number(row.advancePayment),
+    balanceAmount: Number(row.balanceAmount),
   };
 }
 
@@ -224,6 +228,9 @@ export async function createInvoice(
       discount
     );
 
+    const advancePayment = Math.min(input.advancePayment ?? 0, total);
+    const balanceAmount = total - advancePayment;
+
     // 4. Insert the invoice. Numeric columns are stringified to keep
     //    postgres-js from routing a JS Number through scientific notation.
     const [invoice] = await tx
@@ -235,6 +242,8 @@ export async function createInvoice(
         taxTotal: taxTotal.toFixed(2),
         discount: discount.toFixed(2),
         total: total.toFixed(2),
+        advancePayment: advancePayment.toFixed(2),
+        balanceAmount: balanceAmount.toFixed(2),
         paymentMode: input.paymentMode ?? "Cash",
         status: input.status ?? "PAID",
         notes: input.notes ?? null,
@@ -364,6 +373,9 @@ export async function updateInvoice(
       discount
     );
 
+    const advancePayment = Math.min(input.advancePayment ?? 0, total);
+    const balanceAmount = total - advancePayment;
+
     await tx
       .update(schema.invoices)
       .set({
@@ -372,6 +384,8 @@ export async function updateInvoice(
         taxTotal: taxTotal.toFixed(2),
         discount: discount.toFixed(2),
         total: total.toFixed(2),
+        advancePayment: advancePayment.toFixed(2),
+        balanceAmount: balanceAmount.toFixed(2),
         paymentMode: input.paymentMode ?? "Cash",
         status: input.status ?? "PENDING",
         notes: input.notes ?? null,

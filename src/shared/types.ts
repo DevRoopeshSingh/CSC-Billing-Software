@@ -245,6 +245,8 @@ export const invoiceSchema = z.object({
   taxTotal: z.number().nonnegative().default(0),
   discount: z.number().nonnegative().default(0),
   total: z.number().nonnegative(),
+  advancePayment: z.number().nonnegative().default(0),
+  balanceAmount: z.number().nonnegative().default(0),
   paymentMode: PaymentMode.default("Cash"),
   status: InvoiceStatus.default("PAID"),
   notes: z.string().nullable().default(null),
@@ -287,6 +289,7 @@ export const createInvoiceSchema = z.object({
   notes: z.string().optional(),
   customerNotes: z.string().optional(),
   pointsRedeemed: z.number().int().nonnegative().optional(),
+  advancePayment: z.number().nonnegative().default(0).optional(),
 });
 
 export type CreateInvoiceRequest = z.infer<typeof createInvoiceSchema>;

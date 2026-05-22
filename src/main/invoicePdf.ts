@@ -53,6 +53,8 @@ type Invoice = {
   taxTotal: number;
   discount: number;
   total: number;
+  advancePayment?: number;
+  balanceAmount?: number;
   paymentMode: string;
   status: string;
   notes?: string | null;
@@ -560,6 +562,18 @@ export async function generateInvoicePdfBytes(
   });
   y -= 4;
   drawTotalsRow("Total", money(invoice.total), true);
+  
+  if (invoice.advancePayment && invoice.advancePayment > 0) {
+    drawTotalsRow("Advance", `- ${money(invoice.advancePayment)}`);
+    page.drawLine({
+      start: { x: totalsRight - 220, y: y + 4 },
+      end: { x: totalsRight, y: y + 4 },
+      thickness: 0.8,
+      color: line,
+    });
+    y -= 4;
+    drawTotalsRow("Balance Due", money(invoice.balanceAmount || 0), true);
+  }
 
   // ── Notes ───────────────────────────────────────────────────────────────
   const NOTES_TOP = y - 10;

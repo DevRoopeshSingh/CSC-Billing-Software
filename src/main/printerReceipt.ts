@@ -32,6 +32,8 @@ type Invoice = {
   taxTotal: number;
   discount: number;
   total: number;
+  advancePayment?: number;
+  balanceAmount?: number;
   paymentMode: string;
   status: string;
   customerNotes?: string | null;
@@ -195,6 +197,13 @@ export async function printReceipt(
   printer.leftRight("TOTAL", money(invoice.total));
   printer.setTextNormal();
   printer.bold(false);
+  if (invoice.advancePayment && invoice.advancePayment > 0) {
+    printer.leftRight("Advance", `-${money(invoice.advancePayment)}`);
+    printer.drawLine();
+    printer.bold(true);
+    printer.leftRight("Balance Due", money(invoice.balanceAmount || 0));
+    printer.bold(false);
+  }
   printer.drawLine();
 
   // UPI block

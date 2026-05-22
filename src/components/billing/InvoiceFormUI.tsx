@@ -28,6 +28,7 @@ interface InvoiceFormUIProps {
     setNewName: (v: string) => void;
     setNewMobile: (v: string) => void;
     setDiscount: (v: number) => void;
+    setAdvancePayment: (v: number) => void;
     setPointsRedeemed: (v: number) => void;
     setPaymentMode: (v: "Cash" | "UPI" | "Card" | "Other") => void;
     setNotes: (v: string) => void;
@@ -584,6 +585,22 @@ export function InvoiceFormUI({
                 className="w-24 rounded-md border border-border bg-card px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
               />
             </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Advance Payment (₹)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={state.advancePayment}
+                onChange={(e) => actions.setAdvancePayment(Number(e.target.value))}
+                className="w-24 rounded-md border border-border bg-card px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+              />
+            </div>
+            {state.advancePayment > 0 && state.advancePayment < totals.total && (
+              <p className="text-[11px] text-muted-foreground text-right mb-2">
+                This will leave a balance due. Be sure to save as PENDING.
+              </p>
+            )}
             {state.selectedCustomer && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground flex flex-col">
@@ -613,13 +630,24 @@ export function InvoiceFormUI({
                 {formatCurrency(totals.total)}
               </span>
             </div>
+            {state.advancePayment > 0 && (
+              <div className="flex justify-between text-sm font-semibold mt-1">
+                <span className="text-muted-foreground">Balance Due</span>
+                <span className="text-rose-600">
+                  {formatCurrency(Math.max(0, totals.total - state.advancePayment))}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="mt-6 flex flex-col gap-3">
             <button
               type="button"
               disabled={actionLoading !== null}
-              onClick={() => onSubmit("PAID")}
+              onClick={() => {
+                const status = (state.advancePayment > 0 && state.advancePayment < totals.total) ? "PENDING" : "PAID";
+                onSubmit(status);
+              }}
               className={cn(
                 "flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5",
                 "text-[15px] font-semibold text-white shadow-sm transition-all",
@@ -631,7 +659,7 @@ export function InvoiceFormUI({
               ) : (
                 <>
                   <Check className="h-5 w-5" />
-                  {mode === "edit" ? "Save Changes" : "Save as PAID"}
+                  {mode === "edit" ? "Save Changes" : (state.advancePayment > 0 && state.advancePayment < totals.total ? "Save as PENDING (Partial)" : "Save as PAID")}
                 </>
               )}
             </button>

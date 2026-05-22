@@ -63,6 +63,7 @@ export interface InvoiceState {
   customerNotes: string;
   intraState: boolean;
   pointsRedeemed: number;
+  advancePayment: number;
 }
 
 export function useInvoiceState(initialData?: Partial<InvoiceState>) {
@@ -94,6 +95,9 @@ export function useInvoiceState(initialData?: Partial<InvoiceState>) {
   const [pointsRedeemed, setPointsRedeemed] = useState(
     initialData?.pointsRedeemed ?? 0
   );
+  const [advancePayment, setAdvancePayment] = useState(
+    initialData?.advancePayment ?? 0
+  );
 
   return {
     state: {
@@ -108,6 +112,7 @@ export function useInvoiceState(initialData?: Partial<InvoiceState>) {
       customerNotes,
       intraState,
       pointsRedeemed,
+      advancePayment,
     },
     actions: {
       setSelectedCustomer,
@@ -121,6 +126,7 @@ export function useInvoiceState(initialData?: Partial<InvoiceState>) {
       setCustomerNotes,
       setIntraState,
       setPointsRedeemed,
+      setAdvancePayment,
       addServiceById: (serviceId: number, services: Service[]) => {
         const svc = services.find((s) => s.id === serviceId);
         if (!svc) return;
@@ -192,5 +198,6 @@ export function buildInvoicePayload(
     notes: state.notes || undefined,
     customerNotes: state.customerNotes.trim() || undefined,
     pointsRedeemed: state.pointsRedeemed > 0 ? state.pointsRedeemed : undefined,
+    advancePayment: state.advancePayment > 0 ? state.advancePayment : undefined,
   };
 }
