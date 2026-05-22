@@ -1,0 +1,1 @@
+ALTER TABLE "invoice_items" ADD COLUMN "gov_charge" numeric(12, 2) DEFAULT '0' NOT NULL;

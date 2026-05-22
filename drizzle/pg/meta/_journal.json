@@ -64,6 +64,13 @@
       "when": 1779461679418,
       "tag": "0008_fuzzy_darkhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779463398709,
+      "tag": "0009_volatile_wrecker",
+      "breakpoints": true
     }
   ]
 }
