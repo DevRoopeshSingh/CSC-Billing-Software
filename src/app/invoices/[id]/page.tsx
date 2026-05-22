@@ -146,24 +146,18 @@ export default function InvoiceDetailPage() {
   const onDownloadPdf = async () => {
     if (!invoice?.id) return;
     if (!isBridgeAvailable()) {
-      toast("PDF download is only available in the desktop app", "info");
+      window.location.href = API.INVOICE_PDF(invoice.id) + "?download=1";
       return;
     }
     setBusy("pdf");
     try {
-      const res = await ipc<{ path?: string }>(
+      const resp = await ipc<{ path?: string }>(
         IPC.INVOICES_GENERATE_PDF,
         invoice.id
       );
-      toast(
-        res?.path ? `Saved to ${res.path}` : "PDF generated",
-        "success"
-      );
+      toast(`Saved to ${resp?.path ?? "Documents"}`, "success");
     } catch (err) {
-      toast(
-        err instanceof IpcError ? err.message : "Failed to generate PDF",
-        "error"
-      );
+      toast(err instanceof Error ? err.message : String(err), "error");
     } finally {
       setBusy(null);
     }
@@ -172,18 +166,15 @@ export default function InvoiceDetailPage() {
   const onPrint = async () => {
     if (!invoice?.id) return;
     if (!isBridgeAvailable()) {
-      toast("Direct printing is only available in the desktop app", "info");
+      window.open(API.INVOICE_PDF(invoice.id), "_blank");
       return;
     }
     setBusy("print");
     try {
       await ipc(IPC.PRINTER_PRINT_RECEIPT, invoice.id);
-      toast("Receipt sent to printer", "success");
+      toast("Invoice is printing.", "success");
     } catch (err) {
-      toast(
-        err instanceof IpcError ? err.message : "Failed to print receipt",
-        "error"
-      );
+      toast(err instanceof Error ? err.message : String(err), "error");
     } finally {
       setBusy(null);
     }
@@ -344,14 +335,11 @@ export default function InvoiceDetailPage() {
 
           <button
             type="button"
-            onClick={hasBridge === false ? undefined : onDownloadPdf}
+            onClick={onDownloadPdf}
             disabled={busy !== null}
-            aria-disabled={hasBridge === false}
-            title={hasBridge === false ? "Only available in desktop app" : undefined}
             className={cn(
               actionBtn,
-              "border-border bg-card text-foreground",
-              hasBridge === false ? "opacity-60 cursor-not-allowed" : "hover:bg-background"
+              "border-border bg-card text-foreground hover:bg-background"
             )}
           >
             {busy === "pdf" ? (
@@ -364,14 +352,11 @@ export default function InvoiceDetailPage() {
 
           <button
             type="button"
-            onClick={hasBridge === false ? undefined : onPrint}
+            onClick={onPrint}
             disabled={busy !== null}
-            aria-disabled={hasBridge === false}
-            title={hasBridge === false ? "Only available in desktop app" : undefined}
             className={cn(
               actionBtn,
-              "border-border bg-card text-foreground",
-              hasBridge === false ? "opacity-60 cursor-not-allowed" : "hover:bg-background"
+              "border-border bg-card text-foreground hover:bg-background"
             )}
           >
             {busy === "print" ? (

@@ -25,6 +25,7 @@ export const API = {
   INVOICES: "/api/invoices",
   INVOICES_BULK_MARK_PAID: "/api/invoices/bulk-mark-paid",
   INVOICE: (id: number) => `/api/invoices/${id}`,
+  INVOICE_PDF: (id: number) => `/api/invoices/${id}/pdf`,
   INVOICE_STATUS: (id: number) => `/api/invoices/${id}/status`,
   INVOICE_CANCEL: (id: number) => `/api/invoices/${id}/cancel`,
 

@@ -72,8 +72,8 @@ type CenterProfile = {
   // Resolved absolute paths (or null) — main process resolves these inside
   // its uploadsPath sandbox before calling us, so we never touch the DB
   // strings directly.
-  logoFile?: string | null;
-  upiQrFile?: string | null;
+  logoFile?: string | { data: Uint8Array; mimeType: string } | null;
+  upiQrFile?: string | { data: Uint8Array; mimeType: string } | null;
 } | null;
 
 // Single-line sanitizer: strips newlines and any non-WinAnsi glyphs.
@@ -170,23 +170,30 @@ function wrapToLines(
   return lines;
 }
 
-// Embed a PNG/JPG from disk, swallowing failures so a broken image never
+// Embed a PNG/JPG from disk or raw bytes, swallowing failures so a broken image never
 // breaks invoice generation. Returns null if the file is missing/unreadable
 // or in an unsupported format.
 async function tryEmbedImage(
   doc: PDFDocument,
-  filePath: string | null | undefined
+  source: string | { data: Uint8Array; mimeType: string } | null | undefined
 ): Promise<PDFImage | null> {
-  if (!filePath) return null;
+  if (!source) return null;
   try {
-    if (!fs.existsSync(filePath)) return null;
-    const bytes = fs.readFileSync(filePath);
-    const ext = path.extname(filePath).toLowerCase();
+    let bytes: Uint8Array;
+    let ext = "";
+    if (typeof source === "string") {
+      if (!fs.existsSync(source)) return null;
+      bytes = fs.readFileSync(source);
+      ext = path.extname(source).toLowerCase();
+    } else {
+      bytes = source.data;
+      ext = source.mimeType === "image/png" ? ".png" : ".jpg";
+    }
     if (ext === ".png") return await doc.embedPng(bytes);
     if (ext === ".jpg" || ext === ".jpeg") return await doc.embedJpg(bytes);
     return null;
   } catch (err) {
-    console.error("[invoicePdf] failed to embed image", filePath, err);
+    console.error("[invoicePdf] failed to embed image", err);
     return null;
   }
 }
@@ -201,11 +208,10 @@ function fitImage(
   return { width: img.width * scale, height: img.height * scale };
 }
 
-export async function generateInvoicePdf(
+export async function generateInvoicePdfBytes(
   invoice: Invoice,
-  center: CenterProfile,
-  outPath: string
-): Promise<void> {
+  center: CenterProfile
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -652,6 +658,14 @@ export async function generateInvoicePdf(
     color: mute,
   });
 
-  const bytes = await doc.save();
+  return await doc.save();
+}
+
+export async function generateInvoicePdf(
+  invoice: Invoice,
+  center: CenterProfile,
+  outPath: string
+): Promise<void> {
+  const bytes = await generateInvoicePdfBytes(invoice, center);
   fs.writeFileSync(outPath, bytes);
 }
