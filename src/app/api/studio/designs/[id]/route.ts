@@ -27,8 +27,9 @@ async function getSessionUser(cookieStore: ReturnType<typeof cookies>) {
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
   const cookieStore = cookies();
   const sessionUser = await getSessionUser(cookieStore);
 
@@ -41,7 +42,7 @@ export async function GET(
     const result = await db
       .select()
       .from(designs)
-      .where(and(eq(designs.id, params.id), eq(designs.userId, sessionUser.id)));
+      .where(and(eq(designs.id, id), eq(designs.userId, sessionUser.id)));
 
     if (result.length === 0) {
       return NextResponse.json({ error: 'Design not found' }, { status: 404 });
@@ -56,8 +57,9 @@ export async function GET(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
   const cookieStore = cookies();
   const sessionUser = await getSessionUser(cookieStore);
 
@@ -69,7 +71,7 @@ export async function DELETE(
     const db = getDb();
     const result = await db
       .delete(designs)
-      .where(and(eq(designs.id, params.id), eq(designs.userId, sessionUser.id)))
+      .where(and(eq(designs.id, id), eq(designs.userId, sessionUser.id)))
       .returning({ id: designs.id });
 
     if (result.length === 0) {
