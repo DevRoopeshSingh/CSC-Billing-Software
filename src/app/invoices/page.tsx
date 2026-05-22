@@ -182,25 +182,48 @@ function InvoicesContent() {
                 toast("No invoices to export", "info");
                 return;
               }
+              if (filtered.length > 100) {
+                toast("Maximum 100 invoices can be exported at once. Please filter by date or customer to reduce the list.", "error");
+                return;
+              }
               const ids = filtered.map(i => i.id!);
               setLoading(true);
+              toast("Generating ZIP file... This may take a few moments.", "info");
               try {
-                const res = await window.ipc?.invoke(IPC.INVOICES_EXPORT_ZIP, ids) as any;
-                if (!res) {
-                  toast("Export failed: Desktop environment required", "error");
-                  return;
+                const res = await fetch("/api/invoices/bulk-export-pdfs", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ invoiceIds: ids }),
+                });
+                
+                if (!res.ok) {
+                  const errorData = await res.json().catch(() => null);
+                  throw new Error(errorData?.error || "Failed to generate bulk PDF export");
                 }
-                if (res.cancelled) {
-                  toast("Export cancelled", "info");
-                } else {
-                  toast(`Exported ${res.count} PDFs to ${res.path}`, "success");
+
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                const contentDisposition = res.headers.get("Content-Disposition");
+                let filename = `invoices_export_${new Date().toISOString().split('T')[0]}.zip`;
+                if (contentDisposition) {
+                  const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                  if (filenameMatch && filenameMatch.length === 2) {
+                    filename = filenameMatch[1];
+                  }
                 }
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                
+                toast(`Successfully exported ${ids.length} PDFs.`, "success");
               } catch (err) {
                 toast(err instanceof Error ? err.message : "Failed to export PDFs", "error");
               } finally {
                 setLoading(false);
-                // Reload invoices just in case something was printed/marked
-                loadInvoices();
               }
             }}
             disabled={loading}

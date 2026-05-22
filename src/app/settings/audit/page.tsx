@@ -105,6 +105,12 @@ export default function AuditLogsPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Immutable timeline of significant system actions.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-md border border-border">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> <strong>CREATE:</strong> New entity added</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> <strong>UPDATE:</strong> Existing entity modified</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> <strong>DELETE:</strong> Entity removed</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500"></span> <strong>LOGIN:</strong> User session events</span>
+          </div>
         </div>
         <button
           onClick={exportCSV}
