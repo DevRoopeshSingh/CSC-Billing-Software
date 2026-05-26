@@ -134,6 +134,9 @@ export const customers = pgTable("customers", {
   whatsappOptIn: boolean("whatsapp_opt_in").notNull().default(true),
   smsOptIn: boolean("sms_opt_in").notNull().default(true),
   loyaltyPoints: integer("loyalty_points").notNull().default(0),
+  aadhaarNumber: text("aadhaar_number").notNull().default(""),
+  panNumber: text("pan_number").notNull().default(""),
+  kycVerified: boolean("kyc_verified").notNull().default(false),
   createdBy: integer("created_by").references(() => users.id),
   updatedBy: integer("updated_by").references(() => users.id),
 });
@@ -226,6 +229,7 @@ export const invoicesRelations = relations(invoices, ({ one, many }) => ({
     references: [customers.id],
   }),
   items: many(invoiceItems),
+  payments: many(payments),
   creator: one(users, {
     fields: [invoices.createdBy],
     references: [users.id],
@@ -375,3 +379,82 @@ export const loyaltyTransactionsRelations = relations(loyaltyTransactions, ({ on
     references: [invoices.id],
   }),
 }));
+
+// Phase 4: Customer Documents
+export const customerDocuments = pgTable("customer_documents", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id")
+    .notNull()
+    .references(() => customers.id),
+  name: text("name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  filePath: text("file_path").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const customerDocumentsRelations = relations(customerDocuments, ({ one }) => ({
+  customer: one(customers, {
+    fields: [customerDocuments.customerId],
+    references: [customers.id],
+  }),
+}));
+
+export const leads = pgTable("leads", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  mobile: text("mobile").notNull().default(""),
+  email: text("email").notNull().default(""),
+  serviceInterest: text("service_interest").notNull().default(""),
+  source: text("source").notNull().default("manual"),
+  status: text("status").notNull().default("NEW"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  convertedCustomerId: integer("converted_customer_id"),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+
+export const faqEntries = pgTable("faq_entries", {
+  id: serial("id").primaryKey(),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  category: text("category").notNull().default("General"),
+  tags: text("tags").notNull().default(""),
+  isPublished: boolean("is_published").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+
+export const payments = pgTable("payments", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  paymentMode: text("payment_mode").notNull().default("Cash"),
+  paymentDate: timestamp("payment_date", { withTimezone: true }).notNull().defaultNow(),
+  referenceId: text("reference_id"),
+  createdBy: integer("created_by").references(() => users.id),
+});
+
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [payments.invoiceId],
+    references: [invoices.id],
+  }),
+  creator: one(users, {
+    fields: [payments.createdBy],
+    references: [users.id],
+  }),
+}));
+
+

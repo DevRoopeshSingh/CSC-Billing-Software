@@ -1,7 +1,8 @@
 // src/app/invoices/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
+import { useState, useMemo, Suspense } from "react";
+import useSWR from "swr";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,8 @@ import { useCanWrite } from "@/lib/permissions";
 
 const STATUS_OPTIONS = ["ALL", "PAID", "PENDING", "CANCELLED"] as const;
 
+const fetcher = (url: string) => api.get<InvoiceDetail[]>(url);
+
 function InvoicesContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -40,32 +43,17 @@ function InvoicesContent() {
   
   const customerIdFilter = searchParams.get("customerId");
 
-  const [invoices, setInvoices] = useState<InvoiceDetail[]>([]);
-  const [loading, setLoading] = useState(true);
-
+  const [isExporting, setIsExporting] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const loadInvoices = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await api.get<InvoiceDetail[]>(API.INVOICES);
-      setInvoices(list ?? []);
-    } catch (err) {
-      toast(
-        err instanceof ApiError ? err.message : "Failed to load invoices",
-        "error"
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    loadInvoices();
-  }, [loadInvoices]);
+  const { data: invoices = [], isLoading: loading, mutate: loadInvoices } = useSWR<InvoiceDetail[]>(
+    API.INVOICES,
+    fetcher,
+    { onError: (err) => toast(err instanceof ApiError ? err.message : "Failed to load invoices", "error") }
+  );
 
   const updateStatus = async (
     id: number,
@@ -79,8 +67,9 @@ function InvoicesContent() {
     }
     try {
       await api.post(API.INVOICE_STATUS(id), { status: newStatus });
-      setInvoices((list) =>
-        list.map((i) => (i.id === id ? { ...i, status: newStatus } : i))
+      loadInvoices(
+        (list) => (list || []).map((i) => (i.id === id ? { ...i, status: newStatus } : i)),
+        false
       );
     } catch (err) {
       toast(
@@ -187,7 +176,7 @@ function InvoicesContent() {
                 return;
               }
               const ids = filtered.map(i => i.id!);
-              setLoading(true);
+              setIsExporting(true);
               toast("Generating ZIP file... This may take a few moments.", "info");
               try {
                 const res = await fetch("/api/invoices/bulk-export-pdfs", {
@@ -223,7 +212,7 @@ function InvoicesContent() {
               } catch (err) {
                 toast(err instanceof Error ? err.message : "Failed to export PDFs", "error");
               } finally {
-                setLoading(false);
+                setIsExporting(false);
               }
             }}
             disabled={loading}

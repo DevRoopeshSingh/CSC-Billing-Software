@@ -93,9 +93,16 @@ export const customers = sqliteTable("customers", {
   email: text("email").notNull().default(""),
   address: text("address").notNull().default(""),
   tags: text("tags").notNull().default(""),
-  whatsappOptIn: integer("whatsapp_opt_in", { mode: "boolean" }).notNull().default(true),
-  smsOptIn: integer("sms_opt_in", { mode: "boolean" }).notNull().default(true),
+  whatsappOptIn: integer("whatsapp_opt_in", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  smsOptIn: integer("sms_opt_in", { mode: "boolean" })
+    .notNull()
+    .default(true),
   loyaltyPoints: integer("loyalty_points").notNull().default(0),
+  aadhaarNumber: text("aadhaar_number").notNull().default(""),
+  panNumber: text("pan_number").notNull().default(""),
+  kycVerified: integer("kyc_verified", { mode: "boolean" }).notNull().default(false),
   createdBy: integer("created_by").references(() => users.id),
   updatedBy: integer("updated_by").references(() => users.id),
 });
@@ -135,6 +142,7 @@ export const invoicesRelations = relations(invoices, ({ one, many }) => ({
     references: [customers.id],
   }),
   items: many(invoiceItems),
+  payments: many(payments),
   creator: one(users, {
     fields: [invoices.createdBy],
     references: [users.id],
@@ -274,3 +282,126 @@ export const apiKeys = sqliteTable("api_keys", {
     .$defaultFn(() => new Date()),
   lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
 });
+
+// ─── Expenses ────────────────────────────────────────────────────────────────
+export const expenses = sqliteTable("expenses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  amount: text("amount").notNull(),
+  category: text("category").notNull(),
+  description: text("description").notNull().default(""),
+  expenseDate: integer("expense_date", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  paymentMode: text("payment_mode").notNull().default("Cash"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+
+// ─── Shift Handovers ─────────────────────────────────────────────────────────
+export const shiftHandovers = sqliteTable("shift_handovers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  shiftDate: integer("shift_date", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  startingCash: text("starting_cash").notNull(),
+  expectedEndingCash: text("expected_ending_cash").notNull(),
+  actualEndingCash: text("actual_ending_cash").notNull(),
+  discrepancy: text("discrepancy").notNull(),
+  notes: text("notes"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+
+// ─── Payments ────────────────────────────────────────────────────────────────
+export const payments = sqliteTable("payments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceId: integer("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+  amount: text("amount").notNull(),
+  paymentMode: text("payment_mode").notNull().default("Cash"),
+  paymentDate: integer("payment_date", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  referenceId: text("reference_id"),
+  createdBy: integer("created_by").references(() => users.id),
+});
+
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [payments.invoiceId],
+    references: [invoices.id],
+  }),
+  creator: one(users, {
+    fields: [payments.createdBy],
+    references: [users.id],
+  }),
+}));
+
+// ─── Audit Logs ──────────────────────────────────────────────────────────────
+export const auditLogs = sqliteTable("audit_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").references(() => users.id),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  details: text("details", { mode: "json" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+}));
+
+// ─── Loyalty Transactions ────────────────────────────────────────────────────
+export const loyaltyTransactions = sqliteTable("loyalty_transactions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id")
+    .notNull()
+    .references(() => customers.id),
+  invoiceId: integer("invoice_id").references(() => invoices.id),
+  points: integer("points").notNull(),
+  type: text("type").notNull(), // 'EARNED', 'REDEEMED', 'MANUAL_ADJUSTMENT'
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const loyaltyTransactionsRelations = relations(loyaltyTransactions, ({ one }) => ({
+  customer: one(customers, {
+    fields: [loyaltyTransactions.customerId],
+    references: [customers.id],
+  }),
+  invoice: one(invoices, {
+    fields: [loyaltyTransactions.invoiceId],
+    references: [invoices.id],
+  }),
+}));
+
+// ─── Customer Documents ────────────────────────────────────────────────────────
+export const customerDocuments = sqliteTable("customer_documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id")
+    .notNull()
+    .references(() => customers.id),
+  name: text("name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  filePath: text("file_path").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const customerDocumentsRelations = relations(customerDocuments, ({ one }) => ({
+  customer: one(customers, {
+    fields: [customerDocuments.customerId],
+    references: [customers.id],
+  }),
+}));

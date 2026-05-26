@@ -217,7 +217,6 @@ export interface ServicesImportResult {
   committed: boolean;
 }
 
-// ─── Customer ────────────────────────────────────────────────────────────────
 export const customerSchema = z.object({
   id: z.number().int().positive().optional(),
   name: z.string().min(1, "Customer name is required"),
@@ -229,9 +228,23 @@ export const customerSchema = z.object({
   whatsappOptIn: z.boolean().default(true),
   smsOptIn: z.boolean().default(true),
   loyaltyPoints: z.number().int().default(0),
+  aadhaarNumber: z.string().default(""),
+  panNumber: z.string().default(""),
+  kycVerified: z.boolean().default(false),
   createdBy: z.number().int().positive().nullable().optional(),
   updatedBy: z.number().int().positive().nullable().optional(),
 });
+
+export const paymentSchema = z.object({
+  id: z.number().int().positive().optional(),
+  invoiceId: z.number().int().positive(),
+  amount: z.number().positive(),
+  paymentMode: PaymentMode.default("Cash"),
+  paymentDate: z.coerce.date().optional(),
+  referenceId: z.string().nullable().default(null),
+  createdBy: z.number().int().positive().nullable().optional(),
+});
+export type Payment = z.infer<typeof paymentSchema>;
 
 export type Customer = z.infer<typeof customerSchema> & {
   invoiceCount?: number;
@@ -281,6 +294,7 @@ export type Invoice = z.infer<typeof invoiceSchema>;
 export type InvoiceDetail = Invoice & {
   customer: Customer;
   items: (InvoiceItem & { service: Service })[];
+  payments?: Payment[];
 };
 
 // ─── Create Invoice Request ──────────────────────────────────────────────────

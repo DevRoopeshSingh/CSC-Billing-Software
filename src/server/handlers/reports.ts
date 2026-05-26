@@ -246,3 +246,68 @@ export async function getInvoicesByRange(input: z.infer<typeof reportSummaryInpu
     orderBy: [desc(schema.invoices.createdAt)],
   });
 }
+
+export async function getOperatorPerformance(input: z.infer<typeof reportSummaryInputSchema>) {
+  const db = getDb();
+  const startDate = new Date(`${input.start}T00:00:00.000Z`);
+  const endDate = new Date(`${input.end}T23:59:59.999Z`);
+
+  const invoices = await db.query.invoices.findMany({
+    where: and(
+      gte(schema.invoices.createdAt, startDate),
+      lte(schema.invoices.createdAt, endDate),
+      ne(schema.invoices.status, "CANCELLED")
+    ),
+    with: { creator: true },
+  });
+
+  const performance = new Map<number, { username: string; role: string; invoiceCount: number; revenue: number }>();
+
+  for (const inv of invoices) {
+    if (!inv.createdBy || !inv.creator) continue;
+    const existing = performance.get(inv.createdBy) || {
+      username: inv.creator.username,
+      role: inv.creator.role,
+      invoiceCount: 0,
+      revenue: 0,
+    };
+    existing.invoiceCount += 1;
+    existing.revenue += Number(inv.total) || 0;
+    performance.set(inv.createdBy, existing);
+  }
+
+  return Array.from(performance.values()).sort((a, b) => b.revenue - a.revenue);
+}
+
+export async function getRevenueTrends(input: z.infer<typeof reportSummaryInputSchema>) {
+  const db = getDb();
+  const startDate = new Date(`${input.start}T00:00:00.000Z`);
+  const endDate = new Date(`${input.end}T23:59:59.999Z`);
+
+  const invoices = await db
+    .select({
+      createdAt: schema.invoices.createdAt,
+      total: schema.invoices.total,
+    })
+    .from(schema.invoices)
+    .where(
+      and(
+        gte(schema.invoices.createdAt, startDate),
+        lte(schema.invoices.createdAt, endDate),
+        ne(schema.invoices.status, "CANCELLED")
+      )
+    );
+
+  const trends = new Map<string, { date: string; revenue: number; invoiceCount: number }>();
+
+  for (const inv of invoices) {
+    if (!inv.createdAt) continue;
+    const dateStr = inv.createdAt.toISOString().split("T")[0];
+    const existing = trends.get(dateStr) || { date: dateStr, revenue: 0, invoiceCount: 0 };
+    existing.revenue += Number(inv.total) || 0;
+    existing.invoiceCount += 1;
+    trends.set(dateStr, existing);
+  }
+
+  return Array.from(trends.values()).sort((a, b) => a.date.localeCompare(b.date));
+}

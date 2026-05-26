@@ -59,10 +59,21 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
-    }
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ]
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1052.0",
+    "@tanstack/react-virtual": "^3.13.26",
     "adm-zip": "^0.5.17",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.9.0",
@@ -70,8 +81,10 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.36.4",
+    "electron-log": "^5.4.4",
     "electron-updater": "^6.8.3",
     "fabric": "^5.3.0",
+    "framer-motion": "^12.40.0",
     "jose": "^6.2.3",
     "lucide-react": "^0.460.0",
     "next": "^16.1.7",
@@ -80,6 +93,9 @@
     "postgres": "^3.4.5",
     "react": "^18",
     "react-dom": "^18",
+    "react-hotkeys-hook": "^5.3.2",
+    "recharts": "^3.8.1",
+    "swr": "^2.4.1",
     "tailwind-merge": "^2.6.0",
     "zod": "^3.24.0"
   },

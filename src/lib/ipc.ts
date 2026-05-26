@@ -91,3 +91,10 @@ export async function ipcTry<T = unknown>(
     return null;
   }
 }
+
+export function ipcOn(channel: string, callback: (...args: any[]) => void) {
+  if (!isBridgeAvailable() || !window.ipc?.on) {
+    return () => {};
+  }
+  return window.ipc.on(channel, callback);
+}

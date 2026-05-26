@@ -1,251 +1,178 @@
-// src/app/help/page.tsx
-// Operator-facing Service FAQ. Available to every authed role — staff is the
-// primary user (they read this aloud to walk-in customers); admins and
-// viewers see the same content. No mutations, no IPC — content is bundled.
-
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  BookOpen,
-  ChevronDown,
-  Search,
-  X,
-  HelpCircle,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import {
-  FAQ_CATEGORIES,
-  FAQ_INDEX,
-  FAQ_TOTAL_ENTRIES,
-  type FaqCategory,
-  type FaqEntry,
-} from "@/data/faq";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { api } from "@/lib/api-client";
+import { useToast } from "@/components/Toast";
+import { Plus, HelpCircle, Loader2, BookOpen } from "lucide-react";
 
-// Result of applying the current search query: each category keeps only the
-// entries that matched, and categories with zero matches are dropped.
-interface FilteredCategory {
-  category: FaqCategory;
-  entries: FaqEntry[];
-}
-
-function filterCategories(query: string): FilteredCategory[] {
-  const q = query.trim().toLowerCase();
-  if (!q) {
-    return FAQ_CATEGORIES.map((c) => ({ category: c, entries: c.entries }));
-  }
-  const matches = FAQ_INDEX.filter((e) => e.haystack.includes(q));
-  // Group preserving the source category order.
-  const byCategory = new Map<string, FaqEntry[]>();
-  for (const m of matches) {
-    const list = byCategory.get(m.category.id) ?? [];
-    list.push(m);
-    byCategory.set(m.category.id, list);
-  }
-  return FAQ_CATEGORIES.flatMap((c) => {
-    const entries = byCategory.get(c.id);
-    return entries && entries.length > 0
-      ? [{ category: c, entries }]
-      : [];
-  });
+interface Faq {
+  id: number;
+  question: string;
+  answer: string;
+  category: string;
+  isPublished: boolean;
 }
 
 export default function HelpPage() {
-  const [query, setQuery] = useState("");
+  const { user: currentUser } = useAuth();
+  const { toast } = useToast();
+  const [faqs, setFaqs] = useState<Faq[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = useMemo(() => filterCategories(query), [query]);
-  const matchCount = useMemo(
-    () => filtered.reduce((s, c) => s + c.entries.length, 0),
-    [filtered]
-  );
-  const isFiltering = query.trim().length > 0;
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newFaq, setNewFaq] = useState({
+    question: "",
+    answer: "",
+    category: "General",
+  });
+
+  useEffect(() => {
+    if (currentUser) loadFaqs();
+  }, [currentUser]);
+
+  const loadFaqs = async () => {
+    try {
+      setLoading(true);
+      const data = await api.get<Faq[]>("/api/faq");
+      setFaqs(data);
+    } catch (err) {
+      toast("Failed to load FAQs", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddFaq = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await api.post("/api/faq", newFaq);
+      toast("FAQ added successfully", "success");
+      setShowAddModal(false);
+      setNewFaq({ question: "", answer: "", category: "General" });
+      loadFaqs();
+    } catch (err) {
+      toast("Failed to add FAQ", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Group by category for rendering
+  const faqsByCategory = faqs.reduce((acc, faq) => {
+    if (!acc[faq.category]) acc[faq.category] = [];
+    acc[faq.category].push(faq);
+    return acc;
+  }, {} as Record<string, Faq[]>);
 
   return (
-    <div className="space-y-6 pb-10">
-      {/* ── Header ───────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-primary" />
-            <h2 className="text-2xl font-bold text-foreground">Service FAQ</h2>
-          </div>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Quick reference for the questions customers ask at the desk.
-            Searchable, grouped by service category.
-          </p>
+    <div className="space-y-8 max-w-4xl mx-auto pb-20">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">Knowledge Base</h2>
+          <p className="text-sm text-muted-foreground mt-1">Frequently asked questions and service guidelines.</p>
         </div>
-        <span className="rounded-full border border-border bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground">
-          {FAQ_TOTAL_ENTRIES} questions · {FAQ_CATEGORIES.length} categories
-        </span>
-      </div>
-
-      {/* ── Search ───────────────────────────────────────────────────── */}
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search questions, answers, rates…"
-          className={cn(
-            "w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-10 text-sm text-foreground",
-            "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
-            "placeholder:text-muted-foreground"
-          )}
-        />
-        {query && (
+        {currentUser?.role !== "viewer" && (
           <button
-            type="button"
-            aria-label="Clear search"
-            onClick={() => setQuery("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
           >
-            <X className="h-4 w-4" />
+            <Plus className="h-4 w-4" />
+            Add FAQ
           </button>
         )}
       </div>
 
-      {/* ── Category jump-rail (only when not filtering) ─────────────── */}
-      {!isFiltering && (
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-          {FAQ_CATEGORIES.map((c) => {
-            const Icon = c.icon;
-            return (
-              <a
-                key={c.id}
-                href={`#cat-${c.id}`}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5",
-                  "text-[12px] font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                )}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {c.name}
-                <span className="text-[10px] text-muted-foreground/70">
-                  {c.entries.length}
-                </span>
-              </a>
-            );
-          })}
+      {loading ? (
+        <div className="py-12 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      )}
-
-      {/* ── Filter result summary ────────────────────────────────────── */}
-      {isFiltering && (
-        <p className="text-xs text-muted-foreground">
-          {matchCount === 0
-            ? `No matches for "${query.trim()}".`
-            : `${matchCount} match${matchCount === 1 ? "" : "es"} for "${query.trim()}".`}
-        </p>
-      )}
-
-      {/* ── Empty state ──────────────────────────────────────────────── */}
-      {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card py-16 text-muted-foreground">
-          <HelpCircle className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-sm">Try a shorter or simpler search term.</p>
-          <button
-            type="button"
-            onClick={() => setQuery("")}
-            className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
-          >
-            Reset search
-          </button>
+      ) : faqs.length === 0 ? (
+        <div className="py-20 text-center text-muted-foreground border border-border rounded-xl bg-card">
+          <HelpCircle className="mx-auto h-12 w-12 mb-4 opacity-20" />
+          <p className="text-lg font-medium">No knowledge base articles found.</p>
+          <p className="text-sm mt-1">Start by adding your first FAQ.</p>
         </div>
       ) : (
-        <div className="space-y-6">
-          {filtered.map(({ category, entries }) => {
-            const Icon = category.icon;
-            return (
-              <section
-                key={category.id}
-                id={`cat-${category.id}`}
-                className="scroll-mt-24 rounded-xl border border-border bg-card shadow-sm"
-              >
-                <header className="flex items-center gap-3 border-b border-border px-5 py-4">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                    <Icon className="h-4 w-4 text-primary" />
+        <div className="space-y-8">
+          {Object.entries(faqsByCategory).map(([category, items]) => (
+            <div key={category} className="space-y-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2 border-b border-border/50 pb-2">
+                <BookOpen className="h-5 w-5 text-primary" />
+                {category}
+              </h3>
+              <div className="grid gap-4">
+                {items.map(faq => (
+                  <div key={faq.id} className="bg-card border border-border rounded-xl p-5 shadow-sm transition-all hover:shadow-md">
+                    <h4 className="font-semibold text-foreground mb-2 text-base">{faq.question}</h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{faq.answer}</p>
                   </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-foreground">
-                      {category.name}
-                    </h3>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {category.description}
-                    </p>
-                  </div>
-                  <span className="ml-auto rounded-full border border-border bg-background px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                    {entries.length}
-                  </span>
-                </header>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-                <div className="divide-y divide-border">
-                  {entries.map((entry) => (
-                    <FaqItem
-                      key={entry.id}
-                      entry={entry}
-                      // When the user is searching, expand by default so they
-                      // see the matching answer without an extra click.
-                      defaultOpen={isFiltering}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">Add Knowledge Base Entry</h3>
+            <form onSubmit={handleAddFaq} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">Question / Topic</label>
+                <input
+                  type="text"
+                  required
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={newFaq.question}
+                  onChange={(e) => setNewFaq({ ...newFaq, question: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Category</label>
+                <input
+                  type="text"
+                  required
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={newFaq.category}
+                  onChange={(e) => setNewFaq({ ...newFaq, category: e.target.value })}
+                  placeholder="e.g. Services, Operations, General"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Answer / Content</label>
+                <textarea
+                  required
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-[120px]"
+                  value={newFaq.answer}
+                  onChange={(e) => setNewFaq({ ...newFaq, answer: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-dark disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Save Entry
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
-  );
-}
-
-// Single Q&A row. Native <details> handles a11y + keyboard expansion.
-// `key={…|defaultOpen}` is the trick to let parents force a re-mount when
-// the search state flips, so the open-state respects the new default.
-function FaqItem({
-  entry,
-  defaultOpen,
-}: {
-  entry: FaqEntry;
-  defaultOpen: boolean;
-}) {
-  return (
-    <details
-      key={`${entry.id}-${defaultOpen ? "1" : "0"}`}
-      id={entry.id}
-      open={defaultOpen}
-      className="group scroll-mt-24"
-    >
-      <summary
-        className={cn(
-          "flex cursor-pointer list-none items-start gap-3 px-5 py-4",
-          "transition-colors hover:bg-background",
-          "focus:outline-none focus-visible:bg-background"
-        )}
-      >
-        <ChevronDown
-          className={cn(
-            "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-            "-rotate-90 group-open:rotate-0"
-          )}
-        />
-        <span className="text-sm font-semibold text-foreground">{entry.q}</span>
-      </summary>
-      <div className="space-y-3 px-5 pb-5 pl-12 text-sm text-foreground">
-        <p className="leading-relaxed text-muted-foreground">{entry.a}</p>
-        {entry.bullets && entry.bullets.length > 0 && (
-          <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground marker:text-muted-foreground/60">
-            {entry.bullets.map((b, i) => (
-              <li key={i} className="leading-relaxed">
-                {b}
-              </li>
-            ))}
-          </ul>
-        )}
-        {entry.aTail && (
-          <p className="leading-relaxed text-muted-foreground">{entry.aTail}</p>
-        )}
-      </div>
-    </details>
   );
 }

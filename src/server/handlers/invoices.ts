@@ -75,6 +75,7 @@ export interface ServiceShape {
 export type InvoiceDetailShape = InvoiceShape & {
   customer: CustomerRow | null;
   items: (InvoiceItemShape & { service?: ServiceShape })[];
+  payments?: any[]; // Array of payments
 };
 
 function serializeInvoice(row: InvoiceRow): InvoiceShape {
@@ -131,6 +132,7 @@ export async function getInvoice(
     with: {
       customer: true,
       items: { with: { service: true } },
+      payments: true,
     },
   });
   if (!row) return null;
@@ -141,6 +143,7 @@ export async function getInvoice(
       ...serializeItem(it),
       service: it.service ? serializeService(it.service) : undefined,
     })),
+    payments: row.payments?.map(p => ({ ...p, amount: Number(p.amount) })) ?? [],
   };
 }
 

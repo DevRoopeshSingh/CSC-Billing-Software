@@ -9,6 +9,7 @@ declare global {
   interface Window {
     ipc?: {
       invoke: <T = unknown>(channel: IpcChannel, ...args: unknown[]) => Promise<T>;
+      on?: (channel: string, callback: (...args: any[]) => void) => () => void;
     };
   }
 }

@@ -1,7 +1,8 @@
 // src/app/customers/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import useSWR from "swr";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { api, ApiError } from "@/lib/api-client";
@@ -16,9 +17,10 @@ import {
   Tag,
   MessageSquare,
   MessageCircle,
-  Pencil,
   Trash2,
   FileText,
+  User,
+  Pencil,
 } from "lucide-react";
 import { useCanWrite } from "@/lib/permissions";
 import { PinPromptModal } from "@/components/auth/PinPromptModal";
@@ -30,6 +32,9 @@ type FormState = {
   address: string;
   remarks: string;
   tags: string;
+  aadhaarNumber: string;
+  panNumber: string;
+  kycVerified: boolean;
 };
 
 const EMPTY_FORM: FormState = {
@@ -39,6 +44,9 @@ const EMPTY_FORM: FormState = {
   address: "",
   remarks: "",
   tags: "",
+  aadhaarNumber: "",
+  panNumber: "",
+  kycVerified: false,
 };
 
 function toForm(c: Customer): FormState {
@@ -49,14 +57,33 @@ function toForm(c: Customer): FormState {
     address: c.address ?? "",
     remarks: c.remarks ?? "",
     tags: c.tags ?? "",
+    aadhaarNumber: c.aadhaarNumber ?? "",
+    panNumber: c.panNumber ?? "",
+    kycVerified: c.kycVerified ?? false,
   };
 }
 
+const fetcher = (url: string) => api.get<Customer[]>(url);
+
 export default function CustomersPage() {
   const { toast } = useToast();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const queryUrl = debouncedSearch
+    ? `${API.CUSTOMERS_SEARCH}?q=${encodeURIComponent(debouncedSearch)}`
+    : API.CUSTOMERS;
+
+  const { data: customers = [], isLoading: loading, mutate: loadCustomers } = useSWR<Customer[]>(
+    queryUrl,
+    fetcher,
+    { onError: (err) => toast(err instanceof ApiError ? err.message : "Failed to load customers", "error") }
+  );
 
   const [modal, setModal] = useState<
     | { mode: "add" }
@@ -68,33 +95,6 @@ export default function CustomersPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showPinModal, setShowPinModal] = useState(false);
   const canWrite = useCanWrite();
-
-  const loadCustomers = useCallback(
-    async (q: string) => {
-      setLoading(true);
-      try {
-        const list = q
-          ? await api.get<Customer[]>(
-              `${API.CUSTOMERS_SEARCH}?q=${encodeURIComponent(q)}`
-            )
-          : await api.get<Customer[]>(API.CUSTOMERS);
-        setCustomers(list ?? []);
-      } catch (err) {
-        toast(
-          err instanceof ApiError ? err.message : "Failed to load customers",
-          "error"
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [toast]
-  );
-
-  useEffect(() => {
-    const t = setTimeout(() => loadCustomers(search), 300);
-    return () => clearTimeout(t);
-  }, [search, loadCustomers]);
 
   const openAdd = () => {
     setForm(EMPTY_FORM);
@@ -123,6 +123,9 @@ export default function CustomersPage() {
         address: form.address.trim(),
         remarks: form.remarks.trim() || null,
         tags: form.tags.trim(),
+        aadhaarNumber: form.aadhaarNumber.trim(),
+        panNumber: form.panNumber.trim(),
+        kycVerified: form.kycVerified,
       };
       if (modal.mode === "add") {
         await api.post(API.CUSTOMERS, payload);
@@ -132,7 +135,7 @@ export default function CustomersPage() {
         toast("Customer updated", "success");
       }
       closeModal();
-      loadCustomers(search);
+      loadCustomers();
     } catch (err) {
       toast(
         err instanceof ApiError ? err.message : "Failed to save customer",
@@ -163,7 +166,7 @@ export default function CustomersPage() {
         headers: { "x-admin-pin": pin },
       });
       toast("Customer deleted", "success");
-      loadCustomers(search);
+      loadCustomers();
       setDeletingId(null);
       setShowPinModal(false);
     } catch (err) {
@@ -308,6 +311,16 @@ export default function CustomersPage() {
                       <div className="flex items-center justify-end gap-2">
                         {canWrite && (
                           <>
+                            <Link
+                              href={`/customers/${c.id}`}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg border border-border p-2",
+                                "text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                              )}
+                              title="View Profile"
+                            >
+                              <User className="h-4 w-4" />
+                            </Link>
                             <Link
                               href={`/billing/new?customerId=${c.id}`}
                               className={cn(
@@ -473,6 +486,15 @@ export default function CustomersPage() {
                       <div className="flex items-center justify-end gap-1.5">
                         {canWrite && (
                           <>
+                            <Link
+                              href={`/customers/${c.id}`}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5",
+                                "text-xs font-medium text-foreground transition-colors hover:bg-background"
+                              )}
+                            >
+                              Profile
+                            </Link>
                             <Link
                               href={`/billing/new?customerId=${c.id}`}
                               className={cn(
@@ -647,6 +669,57 @@ export default function CustomersPage() {
                       )}
                     />
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Aadhaar Number
+                    </label>
+                    <input
+                      type="text"
+                      value={form.aadhaarNumber}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, aadhaarNumber: e.target.value }))
+                      }
+                      placeholder="12-digit Aadhaar"
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm",
+                        "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      PAN Number
+                    </label>
+                    <input
+                      type="text"
+                      value={form.panNumber}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, panNumber: e.target.value.toUpperCase() }))
+                      }
+                      placeholder="10-digit PAN"
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm uppercase",
+                        "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      )}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.kycVerified}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, kycVerified: e.target.checked }))
+                      }
+                      className="rounded border-border text-primary focus:ring-primary h-4 w-4"
+                    />
+                    <span className="text-sm font-semibold text-foreground">
+                      KYC Verified (Documents Collected)
+                    </span>
+                  </label>
                 </div>
               </div>
               <div className="flex justify-end gap-3 border-t border-border px-6 py-4">

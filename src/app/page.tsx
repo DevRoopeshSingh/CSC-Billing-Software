@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
+import { format } from "date-fns";
 import { api } from "@/lib/api-client";
 import { API } from "@/lib/api-routes";
 import { useToast } from "@/components/Toast";
@@ -43,19 +44,37 @@ type RecentInvoice = {
   createdAt: string | Date;
 };
 
+function TileSkeleton() {
+  return (
+    <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+      <div className="flex items-start justify-between">
+        <div className="space-y-3 w-full">
+          <div className="h-3 w-20 animate-pulse rounded bg-muted"></div>
+          <div className="h-8 w-32 animate-pulse rounded bg-muted"></div>
+          <div className="h-3 w-24 animate-pulse rounded bg-muted"></div>
+        </div>
+        <div className="h-12 w-12 shrink-0 animate-pulse rounded-xl bg-muted"></div>
+      </div>
+    </div>
+  );
+}
+
 function Tile({
   label,
   value,
   sub,
   icon: Icon,
   accent,
+  loading,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   sub?: string;
   icon: React.ElementType;
   accent: string;
+  loading?: boolean;
 }) {
+  if (loading) return <TileSkeleton />;
   return (
     <div className="rounded-xl border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-start justify-between">
@@ -63,13 +82,31 @@ function Tile({
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
-          <p className="mt-3 text-3xl font-bold text-foreground">{value}</p>
+          <div className="mt-3 text-3xl font-bold text-foreground">{value}</div>
           {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
         </div>
         <div className={cn("rounded-xl p-3", accent)}>
           <Icon className="h-6 w-6" />
         </div>
       </div>
+    </div>
+  );
+}
+
+function RealTimeClock() {
+  const [time, setTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 shadow-sm">
+      <Clock className="h-4 w-4 text-primary animate-pulse" />
+      <span className="text-sm font-medium tabular-nums text-foreground">
+        {format(time, "hh:mm:ss a")}
+      </span>
     </div>
   );
 }
@@ -182,7 +219,10 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">{greeting}</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-foreground">{greeting}</h2>
+            <RealTimeClock />
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Today at a glance.
           </p>
@@ -192,7 +232,7 @@ export default function DashboardPage() {
             href="/reports"
             className={cn(
               "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5",
-              "text-[13px] font-medium text-foreground transition-colors hover:bg-background"
+              "text-[13px] font-medium text-foreground transition-colors hover:bg-background shadow-sm hover:shadow"
             )}
           >
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -201,7 +241,7 @@ export default function DashboardPage() {
           <Link
             href="/billing/new"
             className={cn(
-              "flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5",
+              "flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 shadow-sm hover:shadow",
               "text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
             )}
           >
@@ -214,29 +254,33 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <Tile
           label="Today's Invoices"
-          value={loading ? "—" : String(todayCount)}
+          value={String(todayCount)}
+          loading={loading}
           sub="Excluding cancelled"
           icon={Receipt}
-          accent="bg-teal-50 text-teal-600"
+          accent="bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400"
         />
         <Tile
           label="Today's Revenue"
-          value={loading ? "—" : formatCurrency(todayRevenue)}
+          value={formatCurrency(todayRevenue)}
+          loading={loading}
           icon={IndianRupee}
-          accent="bg-emerald-50 text-emerald-600"
+          accent="bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
         />
         <Tile
           label="Avg Invoice (today)"
-          value={loading ? "—" : formatCurrency(avgInvoice)}
+          value={formatCurrency(avgInvoice)}
+          loading={loading}
           icon={Wallet}
-          accent="bg-blue-50 text-blue-600"
+          accent="bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
         />
         <Tile
           label="Pending Dues"
-          value={loading ? "—" : formatCurrency(pendingDues.total)}
+          value={formatCurrency(pendingDues.total)}
+          loading={loading}
           sub={`${pendingDues.count} open · all-time`}
           icon={Hourglass}
-          accent="bg-amber-50 text-amber-600"
+          accent="bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
         />
       </div>
 
@@ -279,8 +323,16 @@ export default function DashboardPage() {
         </div>
 
         {loading ? (
-          <div className="flex h-48 items-center justify-center">
-            <p className="text-sm text-muted-foreground">Loading...</p>
+          <div className="flex flex-col gap-3 p-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex justify-between items-center rounded-lg border border-border p-3">
+                <div className="space-y-2">
+                  <div className="h-4 w-24 animate-pulse rounded bg-muted"></div>
+                  <div className="h-3 w-32 animate-pulse rounded bg-muted"></div>
+                </div>
+                <div className="h-6 w-16 animate-pulse rounded bg-muted"></div>
+              </div>
+            ))}
           </div>
         ) : recent.length === 0 ? (
           <div className="flex h-48 flex-col items-center justify-center gap-3">

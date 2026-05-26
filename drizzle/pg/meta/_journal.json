@@ -71,6 +71,13 @@
       "when": 1779463398709,
       "tag": "0009_volatile_wrecker",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779784425099,
+      "tag": "0010_past_bastion",
+      "breakpoints": true
     }
   ]
 }

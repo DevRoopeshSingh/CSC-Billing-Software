@@ -40,6 +40,8 @@ import {
   Pencil,
   FileText,
   Building2,
+  PlusCircle,
+  CreditCard,
 } from "lucide-react";
 import { useCanWrite } from "@/lib/permissions";
 import { PinPromptModal } from "@/components/auth/PinPromptModal";
@@ -69,10 +71,13 @@ export default function InvoiceDetailPage() {
   const [showPinModal, setShowPinModal] = useState<
     null | { kind: "delete" } | { kind: "cancel" }
   >(null);
-  const [busy, setBusy] = useState<"status" | "pdf" | "print" | "delete" | null>(
+  const [busy, setBusy] = useState<"status" | "pdf" | "print" | "delete" | "payment" | null>(
     null
   );
   const [hasBridge, setHasBridge] = useState<boolean | null>(null);
+
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ amount: "", paymentMode: "Cash", referenceId: "" });
 
   useEffect(() => {
     setHasBridge(isBridgeAvailable());
@@ -225,6 +230,33 @@ export default function InvoiceDetailPage() {
       throw err instanceof ApiError
         ? err
         : new Error("Failed to cancel invoice");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onRecordPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invoice?.id) return;
+    const amount = parseFloat(paymentForm.amount);
+    if (isNaN(amount) || amount <= 0) {
+      toast("Invalid amount", "error");
+      return;
+    }
+
+    setBusy("payment");
+    try {
+      await api.post("/api/payments", {
+        invoiceId: invoice.id,
+        amount,
+        paymentMode: paymentForm.paymentMode,
+        referenceId: paymentForm.referenceId || null,
+      });
+      toast("Payment recorded", "success");
+      setPaymentModalOpen(false);
+      load(); // Reload invoice to get updated balance and payment list
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to record payment", "error");
     } finally {
       setBusy(null);
     }
@@ -574,6 +606,58 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
 
+      {/* Payments */}
+      <div className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Payment History
+          </p>
+          {invoice.balanceAmount > 0 && invoice.status !== "CANCELLED" && canWrite && (
+            <button
+              onClick={() => {
+                setPaymentForm({ amount: invoice.balanceAmount.toString(), paymentMode: "Cash", referenceId: "" });
+                setPaymentModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+            >
+              <PlusCircle className="h-3.5 w-3.5" />
+              Record Payment
+            </button>
+          )}
+        </div>
+        <div className="p-0">
+          {invoice.payments && invoice.payments.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left">
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mode</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ref. ID</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoice.payments.map((p) => (
+                    <tr key={p.id} className="border-b border-border/50 last:border-0">
+                      <td className="px-5 py-3 text-foreground">{p.paymentDate ? formatDate(p.paymentDate) : "—"}</td>
+                      <td className="px-5 py-3 text-foreground">{p.paymentMode}</td>
+                      <td className="px-5 py-3 text-foreground">{p.referenceId || "—"}</td>
+                      <td className="px-5 py-3 text-right font-medium text-emerald-600">{formatCurrency(p.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center p-6 text-center">
+              <CreditCard className="h-8 w-8 text-muted-foreground/30 mb-2" />
+              <p className="text-sm text-muted-foreground">No partial payments recorded.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Notes */}
       {(invoice.notes || invoice.customerNotes) && (
         <div className="grid gap-4 md:grid-cols-2">
@@ -617,6 +701,59 @@ export default function InvoiceDetailPage() {
           description="Cancellation removes this invoice from revenue totals. Enter Admin PIN to authorize."
           confirmLabel="Cancel Invoice"
         />
+      )}
+
+      {paymentModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4" onClick={() => setPaymentModalOpen(false)}>
+          <div className="w-full max-w-sm rounded-xl bg-card shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <h3 className="font-bold text-foreground">Record Payment</h3>
+              <button onClick={() => setPaymentModalOpen(false)} className="text-xs text-muted-foreground hover:text-foreground">Esc</button>
+            </div>
+            <form onSubmit={onRecordPayment} className="p-5 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">Amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={paymentForm.amount}
+                  onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))}
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">Payment Mode</label>
+                <select
+                  value={paymentForm.paymentMode}
+                  onChange={(e) => setPaymentForm(f => ({ ...f, paymentMode: e.target.value }))}
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Card">Card</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-foreground">Reference ID (Optional)</label>
+                <input
+                  type="text"
+                  value={paymentForm.referenceId}
+                  onChange={(e) => setPaymentForm(f => ({ ...f, referenceId: e.target.value }))}
+                  placeholder="e.g. UPI Transaction ID"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setPaymentModalOpen(false)} className="rounded-lg border px-3 py-1.5 text-sm">Cancel</button>
+                <button type="submit" disabled={busy === "payment"} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-dark">
+                  {busy === "payment" ? "Saving..." : "Save Payment"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

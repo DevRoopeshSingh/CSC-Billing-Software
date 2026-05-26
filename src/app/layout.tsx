@@ -3,12 +3,15 @@
 
 import "./globals.css";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ToastProvider } from "@/components/Toast";
 import { isBridgeAvailable } from "@/lib/ipc";
+import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
+import { AutoUpdaterUI } from "@/components/AutoUpdaterUI";
 
 import {
   LayoutDashboard,
@@ -31,9 +34,12 @@ import {
   Monitor,
   BookOpen,
   Palette,
-  Receipt,
   Clock,
   ShieldCheck,
+  LineChart as LineChartIcon,
+  Cloud,
+  CloudOff,
+  Receipt,
 } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/lib/auth-context";
@@ -91,7 +97,10 @@ function SidebarNav() {
     },
     {
       label: "Insights",
-      items: [{ href: "/reports", label: "Reports", icon: BarChart3 }],
+      items: [
+        { href: "/reports", label: "Reports", icon: BarChart3 },
+        { href: "/reports/analytics", label: "Analytics", icon: LineChartIcon },
+      ],
     },
     {
       label: "Tools",
@@ -260,6 +269,42 @@ function ThemeToggle() {
   );
 }
 
+function SyncStatusIndicator() {
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSync = async () => {
+      try {
+        const profile = await fetch('/api/center').then(r => r.json());
+        if (profile?.lastBackupDate) {
+          setLastSync(new Date(profile.lastBackupDate));
+        }
+      } catch {
+        // Silent catch for offline or unconfigured states
+      }
+      setLoading(false);
+    };
+    fetchSync();
+    const interval = setInterval(fetchSync, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) return null;
+
+  return (
+    <div 
+      className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border text-[11px] font-medium bg-background" 
+      title={lastSync ? `Last Sync: ${lastSync.toLocaleString()}` : "Never synced to cloud"}
+    >
+      {lastSync ? <Cloud className="h-3 w-3 text-emerald-500" /> : <CloudOff className="h-3 w-3 text-amber-500" />}
+      <span className={lastSync ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}>
+        {lastSync ? "Synced" : "Offline"}
+      </span>
+    </div>
+  );
+}
+
 // ── Topbar ───────────────────────────────────────────────────────────────────
 function TopBar() {
   const pathname = usePathname();
@@ -278,6 +323,7 @@ function TopBar() {
     if (pathname.startsWith("/invoices")) return "Invoices";
     if (pathname.startsWith("/customers")) return "Customers";
     if (pathname.startsWith("/services")) return "Services";
+    if (pathname.startsWith("/reports/analytics")) return "Analytics";
     if (pathname.startsWith("/reports")) return "Reports";
     if (pathname.startsWith("/help")) return "Service FAQ";
     if (pathname.startsWith("/settings/backup")) return "Backup";
@@ -325,6 +371,9 @@ function TopBar() {
 
         {/* Theme Toggle */}
         <ThemeToggle />
+
+        {/* Sync Status */}
+        <SyncStatusIndicator />
 
         {/* Notification */}
         <button
@@ -384,6 +433,25 @@ function TopBar() {
   );
 }
 
+function GlobalShortcuts() {
+  const router = useRouter();
+  
+  useHotkeys('ctrl+n, cmd+n', (e) => {
+    e.preventDefault();
+    router.push('/billing/new');
+  }, { enableOnFormTags: false });
+
+  useHotkeys('ctrl+f, cmd+f', (e) => {
+    e.preventDefault();
+    const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
+    if (searchInput) {
+      searchInput.focus();
+    }
+  }, { enableOnFormTags: false });
+
+  return null;
+}
+
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, isFirstRun, loading } = useAuth();
   const { isSidebarCollapsed } = useSidebar();
@@ -402,6 +470,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <GlobalShortcuts />
       <SidebarNav />
       <div
         className={cn(
@@ -415,6 +484,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
           <div className="mx-auto max-w-7xl">{children}</div>
         </main>
       </div>
+      <AutoUpdaterUI />
     </div>
   );
 }
@@ -459,9 +529,11 @@ export default function RootLayout({
       </head>
       <body>
         <ToastProvider>
-          <AuthProvider>
-            <AppLayout>{children}</AppLayout>
-          </AuthProvider>
+          <GlobalErrorBoundary>
+            <AuthProvider>
+              <AppLayout>{children}</AppLayout>
+            </AuthProvider>
+          </GlobalErrorBoundary>
         </ToastProvider>
       </body>
     </html>

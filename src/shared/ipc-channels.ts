@@ -6,6 +6,8 @@ export const IPC = {
   // ── App ──────────────────────────────────────────────────────────────────
   APP_VERSION: "app:version",
   APP_DB_PATH: "app:db-path",
+  APP_UPDATE_CHECK: "app:update-check",
+  APP_UPDATE_INSTALL: "app:update-install",
 
   // ── Center Profile ───────────────────────────────────────────────────────
   CENTER_GET: "center:get",

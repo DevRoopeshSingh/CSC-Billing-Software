@@ -39,7 +39,10 @@ export const API = {
   REPORTS_PENDING_DUES: "/api/reports/pending-dues",
   REPORTS_TOP_CUSTOMERS: "/api/reports/top-customers",
   REPORTS_TOP_SERVICES: "/api/reports/top-services",
+  REPORTS_OPERATOR_PERFORMANCE: "/api/reports/operator-performance",
+  REPORTS_REVENUE_TRENDS: "/api/reports/revenue-trends",
   REPORTS_RANGE: "/api/reports/range",
+  REPORTS_TALLY_EXPORT: "/api/reports/tally-export",
 
   USERS: "/api/users",
   USER: (id: number) => `/api/users/${id}`,

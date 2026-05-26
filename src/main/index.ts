@@ -2,6 +2,7 @@
 // Electron main process: DB bootstrap, IPC handlers, window, standalone Next server.
 
 import { app, BrowserWindow, ipcMain, dialog, Notification, shell } from "electron";
+import log from "electron-log/main";
 import os from "os";
 import type { IpcMainInvokeEvent } from "electron";
 import path from "path";
@@ -118,7 +119,7 @@ function safeHandle(channel: string, access: Access, handler: RoledHandler) {
       return await handler({ event, session }, ...args);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[IPC ${channel}]`, err);
+      log.error(`[IPC ${channel}]`, err);
       return { error: message };
     }
   });
@@ -457,6 +458,34 @@ function bootstrapDatabase() {
       body TEXT NOT NULL,
       is_active INTEGER NOT NULL DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      amount TEXT NOT NULL,
+      category TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      expense_date INTEGER NOT NULL,
+      payment_mode TEXT NOT NULL DEFAULT 'Cash',
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS shift_handovers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shift_date INTEGER NOT NULL,
+      starting_cash TEXT NOT NULL,
+      expected_ending_cash TEXT NOT NULL,
+      actual_ending_cash TEXT NOT NULL,
+      discrepancy TEXT NOT NULL,
+      notes TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      amount TEXT NOT NULL,
+      payment_mode TEXT NOT NULL DEFAULT 'Cash',
+      payment_date INTEGER NOT NULL,
+      reference_id TEXT,
+      created_by INTEGER REFERENCES users(id)
+    );
     CREATE INDEX IF NOT EXISTS idx_customers_mobile ON customers(mobile);
     CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at);
     CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
@@ -476,7 +505,20 @@ function bootstrapDatabase() {
     }
   };
 
-  ["customers", "services", "invoices", "leads", "faq_entries"].forEach(addAuditFields);
+  ["customers", "services", "invoices", "leads", "faq_entries", "expenses", "shift_handovers"].forEach(addAuditFields);
+
+  // Migration for KYC columns in customers
+  const customerCols = sqlite.prepare(`PRAGMA table_info(customers)`).all() as { name: string }[];
+  const customerColNames = new Set(customerCols.map(c => c.name));
+  if (!customerColNames.has("aadhaar_number")) {
+    sqlite.exec(`ALTER TABLE customers ADD COLUMN aadhaar_number TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!customerColNames.has("pan_number")) {
+    sqlite.exec(`ALTER TABLE customers ADD COLUMN pan_number TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!customerColNames.has("kyc_verified")) {
+    sqlite.exec(`ALTER TABLE customers ADD COLUMN kyc_verified INTEGER NOT NULL DEFAULT 0`);
+  }
 
   // Migration: services schema additions are additive only and idempotent.
   const cols = sqlite
@@ -538,7 +580,7 @@ function bootstrapDatabase() {
   if (serviceCount.count === 0) {
     const seedPath = resolveSeedCsvPath();
     if (!seedPath) {
-      console.warn(
+      log.warn(
         "[seed] services-seed.csv not found — starting with an empty service catalogue."
       );
     } else {
@@ -548,17 +590,17 @@ function bootstrapDatabase() {
         const { rows: seedRows, skipped } = normalizeSeedRows(parsed.rows);
         const tx = sqlite.transaction(() => applyServiceSeed(seedRows));
         const result = tx();
-        console.log(
+        log.info(
           `[seed] services seeded from ${seedPath}: ` +
             `added=${result.added.length}, skipped=${skipped.length + parsed.errors.length}`
         );
         if (skipped.length > 0) {
           for (const s of skipped) {
-            console.warn(`[seed] row ${s.row} skipped: ${s.reason}`);
+            log.warn(`[seed] row ${s.row} skipped: ${s.reason}`);
           }
         }
       } catch (err) {
-        console.error("[seed] failed to seed services from CSV:", err);
+        log.error("[seed] failed to seed services from CSV:", err);
       }
     }
   }
@@ -609,7 +651,7 @@ function startStandaloneServer() {
     "server.js"
   );
   if (!fs.existsSync(serverPath)) {
-    console.error("[standalone] server.js not found at", serverPath);
+    log.error("[standalone] server.js not found at", serverPath);
     return;
   }
 
@@ -633,11 +675,11 @@ function startStandaloneServer() {
 
   nextProcess.stdout?.on("data", (data: Buffer) => {
     const output = data.toString();
-    console.log(`[next] ${output}`);
+    log.info(`[next] ${output}`);
     if (output.includes("Ready") || output.includes("ready")) tryLoad();
   });
   nextProcess.stderr?.on("data", (d: Buffer) =>
-    console.error(`[next:err] ${d}`)
+    log.error(`[next:err] ${d}`)
   );
 
   setTimeout(tryLoad, 6000);
@@ -650,6 +692,20 @@ function registerIpcHandlers() {
   // App
   safeHandle(IPC.APP_VERSION, { auth: "public" }, () => app.getVersion());
   safeHandle(IPC.APP_DB_PATH, { auth: "public" }, () => dbPath);
+  
+  safeHandle(IPC.APP_UPDATE_CHECK, { auth: "session", roles: ["admin"] }, async () => {
+    if (app.isPackaged) {
+      log.info("[auto-update] Manual check requested");
+      await autoUpdater.checkForUpdates();
+    }
+    return { success: true };
+  });
+
+  safeHandle(IPC.APP_UPDATE_INSTALL, { auth: "session", roles: ["admin"] }, async () => {
+    if (app.isPackaged) {
+      autoUpdater.quitAndInstall();
+    }
+  });
 
   // ── Auth & Users ─────────────────────────────────────────────────────────
   safeHandle(IPC.USERS_CHECK_FIRST_RUN, { auth: "public" }, () => {
@@ -2170,7 +2226,7 @@ function registerIpcHandlers() {
       try {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       } catch (err) {
-        console.error("Failed to clean up temp export directory:", err);
+        log.error("Failed to clean up temp export directory:", err);
       }
     }
   });
@@ -2550,11 +2606,11 @@ function registerIpcHandlers() {
     const shmPath = dbPath + "-shm";
     if (fs.existsSync(walPath)) {
       fs.unlinkSync(walPath);
-      console.log("[backup] Deleted orphaned WAL file");
+      log.info("[backup] Deleted orphaned WAL file");
     }
     if (fs.existsSync(shmPath)) {
       fs.unlinkSync(shmPath);
-      console.log("[backup] Deleted orphaned SHM file");
+      log.info("[backup] Deleted orphaned SHM file");
     }
 
     fs.copyFileSync(result.filePaths[0], dbPath);
@@ -2575,7 +2631,7 @@ async function performAutoBackup() {
   try {
     await getSqlite().backup(out);
   } catch (err) {
-    console.error("[auto-backup export]", err);
+    log.error("[auto-backup export]", err);
     return;
   }
   const files = fs
@@ -2620,7 +2676,7 @@ function scheduleDailyDigest() {
           }).show();
         }
       } catch (err) {
-        console.error("[daily-digest]", err);
+        log.error("[daily-digest]", err);
       }
     },
     30 * 60 * 1000
@@ -2634,10 +2690,32 @@ app.whenReady().then(() => {
   createWindow();
   scheduleDailyDigest();
 
-  if (app.isPackaged && process.env.UPDATE_FEED) {
-    autoUpdater
-      .checkForUpdatesAndNotify()
-      .catch((e) => console.error("[auto-update]", e));
+  if (app.isPackaged) {
+    autoUpdater.on("checking-for-update", () => {
+      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("update:checking"));
+    });
+    autoUpdater.on("update-available", (info) => {
+      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("update:available", info));
+    });
+    autoUpdater.on("update-not-available", (info) => {
+      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("update:not-available", info));
+    });
+    autoUpdater.on("error", (err) => {
+      log.error("[auto-update error]", err);
+      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("update:error", err.message));
+    });
+    autoUpdater.on("download-progress", (progressObj) => {
+      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("update:progress", progressObj));
+    });
+    autoUpdater.on("update-downloaded", (info) => {
+      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("update:downloaded", info));
+    });
+
+    if (process.env.UPDATE_FEED) {
+      autoUpdater
+        .checkForUpdatesAndNotify()
+        .catch((e) => log.error("[auto-update]", e));
+    }
   }
 
   app.on("activate", () => {
@@ -2658,7 +2736,7 @@ app.on("before-quit", (event) => {
     try {
       await performAutoBackup();
     } catch (err) {
-      console.error("[auto-backup]", err);
+      log.error("[auto-backup]", err);
     }
     try {
       closeDatabase();
