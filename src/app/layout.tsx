@@ -134,7 +134,7 @@ function SidebarNav() {
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-gray-900 text-white select-none transition-all duration-300 ease-in-out",
-          isSidebarCollapsed ? "w-[64px]" : "w-[var(--sidebar-w)]",
+          isSidebarCollapsed ? "w-[80px]" : "w-[var(--sidebar-w)]",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
@@ -475,7 +475,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       <div
         className={cn(
           "flex flex-1 flex-col transition-all duration-300 ease-in-out w-full",
-          isSidebarCollapsed ? "lg:ml-[64px]" : "lg:ml-[var(--sidebar-w)]"
+          isSidebarCollapsed ? "lg:ml-[80px]" : "lg:ml-[var(--sidebar-w)]"
         )}
       >
         <TopBar />
