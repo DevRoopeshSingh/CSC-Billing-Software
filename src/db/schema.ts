@@ -405,3 +405,26 @@ export const customerDocumentsRelations = relations(customerDocuments, ({ one })
     references: [customers.id],
   }),
 }));
+
+// ─── Studio Designs ────────────────────────────────────────────────────────
+export const designs = sqliteTable("designs", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  canvasState: text("canvas_state").notNull(),
+  thumbnail: text("thumbnail"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const designsRelations = relations(designs, ({ one }) => ({
+  user: one(users, {
+    fields: [designs.userId],
+    references: [users.id],
+  }),
+}));
+

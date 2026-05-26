@@ -59,6 +59,8 @@ export const centerProfiles = pgTable("center_profiles", {
   pinHash: text("pin_hash"),
   operatingHours: text("operating_hours").notNull().default(""),
   centerDescription: text("center_description").notNull().default(""),
+  printerInterface: text("printer_interface").notNull().default("tcp://192.168.1.100:9100"),
+  printerType: text("printer_type").notNull().default("EPSON"),
   printUpiQr: boolean("print_upi_qr").notNull().default(false),
   whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false),
   whatsappApiToken: text("whatsapp_api_token"),
@@ -300,6 +302,7 @@ export const expenses = pgTable("expenses", {
     .defaultNow(),
   paymentMode: text("payment_mode").notNull().default("Cash"),
   createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -316,6 +319,7 @@ export const shiftHandovers = pgTable("shift_handovers", {
   discrepancy: numeric("discrepancy", { precision: 12, scale: 2 }).notNull().default("0"),
   notes: text("notes"),
   createdBy: integer("created_by").references(() => users.id),
+  updatedBy: integer("updated_by").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -456,5 +460,40 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const messageTemplates = pgTable("message_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  channel: text("channel").notNull().default("whatsapp"),
+  body: text("body").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const agentLogs = pgTable("agent_logs", {
+  id: serial("id").primaryKey(),
+  agentType: text("agent_type").notNull(),
+  sessionId: text("session_id").notNull().default(""),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  toolName: text("tool_name").notNull().default(""),
+  toolInput: text("tool_input").notNull().default(""),
+  durationMs: integer("duration_ms").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const apiKeys = pgTable("api_keys", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  scope: text("scope").notNull().default("copilot"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+});
+
 
 
