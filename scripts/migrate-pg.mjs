@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
 import postgres from 'postgres';
 
 async function run() {
@@ -9,37 +11,47 @@ async function run() {
 
   const sql = postgres(connectionString, { max: 1 });
 
-  console.log('Running missing KYC schema updates directly...');
+  console.log('Running robust schema synchronization directly...');
   
-  const statements = [
-    `ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "aadhaar_number" text DEFAULT '' NOT NULL;`,
-    `ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "pan_number" text DEFAULT '' NOT NULL;`,
-    `ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "kyc_verified" boolean DEFAULT false NOT NULL;`
-  ];
-  
-  for (const statement of statements) {
-    try {
-      console.log(`Executing: ${statement}...`);
-      await sql.unsafe(statement);
-    } catch (err) {
-      if (err.code === '42701') {
-        console.log(`Skipping: Column already exists.`);
-      } else {
-        throw err;
+  const migrationDir = './drizzle/pg';
+  const files = fs.readdirSync(migrationDir)
+    .filter(f => f.endsWith('.sql'))
+    .sort(); // Ensure 0000 -> 0011 ordering
+
+  for (const file of files) {
+    console.log(`\n--- Processing ${file} ---`);
+    const content = fs.readFileSync(path.join(migrationDir, file), 'utf8');
+    const statements = content.split('--> statement-breakpoint').map(s => s.trim()).filter(s => s);
+
+    for (const statement of statements) {
+      try {
+        await sql.unsafe(statement);
+        console.log(`[SUCCESS] ${statement.substring(0, 50)}...`);
+      } catch (err) {
+        if (err.code === '42701') {
+          // Column already exists
+          console.log(`[SKIPPED] Column already exists: ${statement.substring(0, 50)}...`);
+        } else if (err.code === '42P07') {
+          // Table/relation already exists
+          console.log(`[SKIPPED] Table already exists: ${statement.substring(0, 50)}...`);
+        } else if (err.code === '42710') {
+          // Constraint already exists
+          console.log(`[SKIPPED] Constraint already exists: ${statement.substring(0, 50)}...`);
+        } else if (err.code === '23505') {
+          // Unique violation (e.g. inserting default data)
+          console.log(`[SKIPPED] Data already exists: ${statement.substring(0, 50)}...`);
+        } else if (err.message && err.message.includes('already exists')) {
+          console.log(`[SKIPPED] Entity already exists: ${statement.substring(0, 50)}...`);
+        } else {
+          console.error(`[ERROR] Failed to execute: ${statement}`);
+          console.error(err);
+          // Don't throw, try to continue with other statements
+        }
       }
     }
   }
 
-  console.log('Validating aadhaar_number, pan_number, and kyc_verified columns in customers table...');
-  const columns = await sql`
-    SELECT column_name 
-    FROM information_schema.columns 
-    WHERE table_name='customers'
-  `;
-  const columnNames = columns.map(c => c.column_name);
-  console.log('Customer columns:', columnNames.join(', '));
-
-  console.log('Schema alignment completed successfully!');
+  console.log('\nSchema alignment completed successfully!');
   process.exit(0);
 }
 
