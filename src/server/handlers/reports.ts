@@ -15,6 +15,9 @@ export interface ReportSummary {
     taxTotal: number;
     discount: number;
     revenue: number;
+    grossCollection: number;
+    governmentCharges: number;
+    netEarnings: number;
   };
   byStatus: Record<"PAID" | "PENDING" | "CANCELLED", { count: number; total: number }>;
   byPaymentMode: { paymentMode: string; count: number; total: number }[];
@@ -64,6 +67,23 @@ export async function getReportSummary(
       revenue: sql<number>`coalesce(sum(${schema.invoices.total}), 0)::numeric`,
     })
     .from(schema.invoices)
+    .where(
+      and(
+        gte(schema.invoices.createdAt, startDate),
+        lte(schema.invoices.createdAt, endDate),
+        ne(schema.invoices.status, "CANCELLED")
+      )
+    );
+
+  const govChargeResult = await db
+    .select({
+      totalGovCharge: sql<number>`coalesce(sum(${schema.invoiceItems.govCharge}), 0)::numeric`,
+    })
+    .from(schema.invoiceItems)
+    .innerJoin(
+      schema.invoices,
+      eq(schema.invoiceItems.invoiceId, schema.invoices.id)
+    )
     .where(
       and(
         gte(schema.invoices.createdAt, startDate),
@@ -125,13 +145,20 @@ export async function getReportSummary(
   }));
 
   const row = result[0];
+  const govCharge = Number(govChargeResult[0]?.totalGovCharge ?? 0);
+  const grossCollection = Number(row?.revenue ?? 0);
+  const netEarnings = grossCollection - govCharge;
+
   return {
     totals: {
       invoiceCount: Number(row?.invoiceCount ?? 0),
       subtotal: Number(row?.subtotal ?? 0),
       taxTotal: Number(row?.taxTotal ?? 0),
       discount: Number(row?.discount ?? 0),
-      revenue: Number(row?.revenue ?? 0),
+      revenue: grossCollection, // kept for compatibility
+      grossCollection,
+      governmentCharges: govCharge,
+      netEarnings,
     },
     byStatus,
     byPaymentMode,

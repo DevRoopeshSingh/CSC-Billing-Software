@@ -31,6 +31,9 @@ type ReportSummary = {
     taxTotal: number;
     discount: number;
     revenue: number;
+    grossCollection?: number;
+    governmentCharges?: number;
+    netEarnings?: number;
   };
   byStatus: Record<"PAID" | "PENDING" | "CANCELLED", { count: number; total: number }>;
   byPaymentMode: Array<{ paymentMode: string; count: number; total: number }>;
@@ -396,9 +399,9 @@ export default function ReportsPage() {
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Tile
-              label="Revenue"
-              value={formatCurrency(totals?.revenue ?? 0)}
-              sub={`${totals?.invoiceCount ?? 0} invoices`}
+              label="Net Earnings"
+              value={formatCurrency(totals?.netEarnings ?? 0)}
+              sub={`Gross: ${formatCurrency(totals?.grossCollection ?? 0)} | Govt: ${formatCurrency(totals?.governmentCharges ?? 0)}`}
               icon={TrendingUp}
               accent="bg-emerald-50 text-emerald-600"
             />

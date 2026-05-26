@@ -29,6 +29,9 @@ type ReportSummary = {
     taxTotal: number;
     discount: number;
     revenue: number;
+    grossCollection?: number;
+    governmentCharges?: number;
+    netEarnings?: number;
   };
   byPaymentMode?: { paymentMode: string; count: number; total: number }[];
 };
@@ -140,7 +143,9 @@ export default function DashboardPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [todayCount, setTodayCount] = useState(0);
-  const [todayRevenue, setTodayRevenue] = useState(0);
+  const [todayGrossCollection, setTodayGrossCollection] = useState(0);
+  const [todayGovCharges, setTodayGovCharges] = useState(0);
+  const [todayNetEarnings, setTodayNetEarnings] = useState(0);
   const [pendingDues, setPendingDues] = useState<PendingDues>({
     count: 0,
     total: 0,
@@ -164,7 +169,9 @@ export default function DashboardPage() {
 
       const t = todaySummary?.totals;
       setTodayCount(t?.invoiceCount ?? 0);
-      setTodayRevenue(t?.revenue ?? 0);
+      setTodayGrossCollection(t?.grossCollection ?? 0);
+      setTodayGovCharges(t?.governmentCharges ?? 0);
+      setTodayNetEarnings(t?.netEarnings ?? 0);
       setPendingDues(dues ?? { count: 0, total: 0 });
       setAvgInvoice(t && t.invoiceCount > 0 ? t.revenue / t.invoiceCount : 0);
       setPaymentModes(todaySummary?.byPaymentMode ?? []);
@@ -261,9 +268,10 @@ export default function DashboardPage() {
           accent="bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400"
         />
         <Tile
-          label="Today's Revenue"
-          value={formatCurrency(todayRevenue)}
+          label="Today's Net Earnings"
+          value={formatCurrency(todayNetEarnings)}
           loading={loading}
+          sub={`Gross: ${formatCurrency(todayGrossCollection)} | Govt: ${formatCurrency(todayGovCharges)}`}
           icon={IndianRupee}
           accent="bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
         />
