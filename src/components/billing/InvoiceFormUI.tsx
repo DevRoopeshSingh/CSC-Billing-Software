@@ -16,6 +16,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { InvoiceState, LineItem } from "./useInvoiceState";
+import { createLineItem } from "./useInvoiceState";
+import OcrUpload from "@/components/invoices/OcrUpload";
+import ServiceSuggestions from "@/components/invoices/ServiceSuggestions";
+import VoiceMic from "@/components/invoices/VoiceMic";
 
 interface InvoiceFormUIProps {
   mode: "create" | "edit";
@@ -41,6 +45,7 @@ interface InvoiceFormUIProps {
     addRow: () => void;
     removeRow: (key: number) => void;
     handleServiceSelect: (key: number, serviceId: number, services: Service[]) => void;
+    setLineItems: React.Dispatch<React.SetStateAction<LineItem[]>>;
   };
   totals: { subtotal: number; taxTotal: number; total: number; govTotal?: number };
   services: Service[];
@@ -123,6 +128,51 @@ export function InvoiceFormUI({
 
       <BookmarkedServices onSelect={(id) => actions.addServiceById(id, services)} />
 
+      <div className="flex flex-col gap-4 mb-4">
+        <OcrUpload
+          onDataExtracted={(data) => {
+            if (data.vendorName) {
+              actions.setNewCustomerMode(true);
+              actions.setNewName(data.vendorName);
+            }
+            if (data.items && data.items.length > 0) {
+              actions.setLineItems((prev) => {
+                const newItems = data.items.map((i: any) => ({
+                  ...createLineItem(),
+                  description: i.name || "",
+                  qty: i.qty || 1,
+                  rate: i.amount || 0,
+                }));
+                // Only keep non-empty previous items or just append
+                const validPrev = prev.filter(p => p.description || p.rate || p.serviceId);
+                return [...validPrev, ...newItems];
+              });
+            }
+          }}
+        />
+        <div className="flex items-center gap-4">
+          <VoiceMic
+            onDraftCreated={(data) => {
+              if (data.customerName) {
+                actions.setNewCustomerMode(true);
+                actions.setNewName(data.customerName);
+              }
+              if (data.services && data.services.length > 0) {
+                actions.setLineItems((prev) => {
+                  const newItems = data.services.map((s: any) => ({
+                    ...createLineItem(),
+                    description: s.name || "",
+                    qty: s.qty || 1,
+                  }));
+                  const validPrev = prev.filter(p => p.description || p.rate || p.serviceId);
+                  return [...validPrev, ...newItems];
+                });
+              }
+            }}
+          />
+        </div>
+      </div>
+
       <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
         <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-foreground">
           Customer Details
@@ -185,6 +235,25 @@ export function InvoiceFormUI({
                 <Check className="h-4 w-4" />
                 {state.selectedCustomer.name}
                 {state.selectedCustomer.mobile && ` — ${state.selectedCustomer.mobile}`}
+              </div>
+            )}
+            
+            {state.selectedCustomer && (
+              <div className="mt-3">
+                <ServiceSuggestions
+                  customerId={state.selectedCustomer.id?.toString() || ""}
+                  onSelectService={(serviceName) => {
+                    const matched = services.find(s => s.name === serviceName);
+                    if (matched && matched.id) {
+                      actions.addServiceById(matched.id, services);
+                    } else {
+                      actions.setLineItems((prev) => {
+                        const validPrev = prev.filter(p => p.description || p.rate || p.serviceId);
+                        return [...validPrev, { ...createLineItem(), description: serviceName }];
+                      });
+                    }
+                  }}
+                />
               </div>
             )}
 

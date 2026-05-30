@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import { useCanWrite } from "@/lib/permissions";
 import { PinPromptModal } from "@/components/auth/PinPromptModal";
+import ReminderModal from "@/components/invoices/ReminderModal";
 
 const STATUS_CLASSES: Record<InvoiceStatus, string> = {
   PAID: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -353,16 +354,25 @@ export default function InvoiceDetailPage() {
           </div>
 
           {invoice.status === "PENDING" && canWrite && (
-            <Link
-              href={`/invoices/${invoice.id}/edit`}
-              className={cn(
-                actionBtn,
-                "border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
-              )}
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </Link>
+            <>
+              <Link
+                href={`/invoices/${invoice.id}/edit`}
+                className={cn(
+                  actionBtn,
+                  "border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
+                )}
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Link>
+              <ReminderModal
+                customerName={invoice.customer?.name || "Customer"}
+                invoiceId={invoice.invoiceNo}
+                amount={invoice.balanceAmount > 0 ? invoice.balanceAmount : invoice.total}
+                dueDate={new Date(invoice.createdAt || Date.now()).toLocaleDateString()}
+                services={(invoice.items || []).map((i: any) => i.description)}
+              />
+            </>
           )}
 
           <button

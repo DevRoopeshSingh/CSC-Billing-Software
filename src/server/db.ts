@@ -10,6 +10,8 @@ import * as schema from "@/db/schema.pg";
 declare global {
   var __pg: ReturnType<typeof postgres> | undefined;
   var __db: PostgresJsDatabase<typeof schema> | undefined;
+  var __pgRo: ReturnType<typeof postgres> | undefined;
+  var __dbRo: PostgresJsDatabase<typeof schema> | undefined;
 }
 
 function buildClient() {
@@ -28,6 +30,18 @@ export function getDb(): PostgresJsDatabase<typeof schema> {
     globalThis.__db = drizzle(globalThis.__pg, { schema });
   }
   return globalThis.__db;
+}
+
+export function getReadOnlyDb(): PostgresJsDatabase<typeof schema> {
+  if (!globalThis.__dbRo) {
+    const url = process.env.SUPABASE_READONLY_URL || process.env.DATABASE_URL;
+    if (!url) {
+      throw new Error("SUPABASE_READONLY_URL or DATABASE_URL is not set");
+    }
+    globalThis.__pgRo = postgres(url, { max: 10, prepare: false });
+    globalThis.__dbRo = drizzle(globalThis.__pgRo, { schema });
+  }
+  return globalThis.__dbRo;
 }
 
 export { schema };
