@@ -38,10 +38,13 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
-        <div className="bg-primary px-6 py-8 text-center text-primary-foreground">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/20">
+    <div 
+      className="flex min-h-screen items-center justify-center bg-background bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: "url('/bg-login.png')" }}
+    >
+      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/20 bg-background/80 backdrop-blur-xl shadow-2xl dark:bg-black/60">
+        <div className="bg-primary/90 px-6 py-8 text-center text-primary-foreground backdrop-blur-md border-b border-white/10">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm shadow-inner">
             <Lock className="h-7 w-7 text-white" />
           </div>
           <h1 className="text-xl font-bold">CSC Billing</h1>
@@ -57,7 +60,7 @@ export function LoginScreen() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-border bg-background/50 py-2.5 pl-10 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary backdrop-blur-sm transition-all"
                   placeholder="Enter username" autoFocus
                   required
                 />
@@ -71,7 +74,7 @@ export function LoginScreen() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-10 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-border bg-background/50 py-2.5 pl-10 pr-10 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary backdrop-blur-sm transition-all"
                   placeholder="Enter password"
                   required
                 />
