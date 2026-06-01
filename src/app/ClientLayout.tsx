@@ -42,6 +42,8 @@ import {
   Receipt,
 } from "lucide-react";
 
+import BillingCopilot from "@/components/ai/BillingCopilot";
+
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { useCanWrite } from "@/lib/permissions";
 import { SidebarProvider, useSidebar } from "@/lib/sidebar-context";
@@ -485,6 +487,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <AutoUpdaterUI />
+      <BillingCopilot />
     </div>
   );
 }

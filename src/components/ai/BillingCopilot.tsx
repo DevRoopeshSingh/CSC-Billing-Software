@@ -40,8 +40,8 @@ export default function BillingCopilot() {
   return (
     <div className="fixed bottom-6 right-6 z-50">
       {isOpen && (
-        <div className="mb-4 w-[400px] bg-base-100 rounded-xl shadow-2xl border border-base-300 overflow-hidden flex flex-col h-[500px]">
-          <div className="bg-primary text-primary-content p-4 flex justify-between items-center">
+        <div className="mb-4 w-[400px] bg-card rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col h-[500px]">
+          <div className="bg-primary text-primary-foreground p-4 flex justify-between items-center">
             <h3 className="font-bold flex items-center gap-2"><MessageSquare size={18} /> Billing Copilot</h3>
             <button onClick={() => setIsOpen(false)} className="hover:bg-primary-focus p-1 rounded"><X size={18} /></button>
           </div>
@@ -83,13 +83,13 @@ export default function BillingCopilot() {
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="p-3 border-t border-base-300 bg-base-100 flex gap-2">
+          <form onSubmit={handleSubmit} className="p-3 border-t border-border bg-card flex gap-2">
             <input 
               type="text" 
               value={query} 
               onChange={e => setQuery(e.target.value)} 
               placeholder="Ask anything..." 
-              className="input input-bordered input-sm flex-1"
+              className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <button type="submit" disabled={isLoading} className="btn btn-primary btn-sm px-3">
               <Send size={16} />

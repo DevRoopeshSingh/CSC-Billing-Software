@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { ClientLayout } from "./ClientLayout";
-import BillingCopilot from "@/components/ai/BillingCopilot";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -56,7 +55,6 @@ export default function RootLayout({
       </head>
       <body>
         <ClientLayout>{children}</ClientLayout>
-        <BillingCopilot />
       </body>
     </html>
   );

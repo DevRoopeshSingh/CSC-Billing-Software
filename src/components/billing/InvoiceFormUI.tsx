@@ -139,9 +139,9 @@ export function InvoiceFormUI({
               actions.setLineItems((prev) => {
                 const newItems = data.items.map((i: any) => ({
                   ...createLineItem(),
-                  description: i.name || "",
+                  description: i.description || "",
                   qty: i.qty || 1,
-                  rate: i.amount || 0,
+                  rate: i.rate || 0,
                 }));
                 // Only keep non-empty previous items or just append
                 const validPrev = prev.filter(p => p.description || p.rate || p.serviceId);
@@ -242,6 +242,7 @@ export function InvoiceFormUI({
               <div className="mt-3">
                 <ServiceSuggestions
                   customerId={state.selectedCustomer.id?.toString() || ""}
+                  pastServices={state.lineItems.map(item => item.description).filter(Boolean)}
                   onSelectService={(serviceName) => {
                     const matched = services.find(s => s.name === serviceName);
                     if (matched && matched.id) {
