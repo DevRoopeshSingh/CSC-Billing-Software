@@ -54,25 +54,25 @@ export default function ReminderModal({ customerName, invoiceId, amount, dueDate
 
   return (
     <>
-      <button onClick={generateReminder} className="btn btn-outline btn-warning btn-sm gap-2">
+      <button onClick={generateReminder} className="inline-flex items-center gap-2 rounded-md border border-warning px-3 py-1.5 text-sm font-medium text-warning hover:bg-warning hover:text-white">
         <Wand2 size={16} /> Generate Reminder
       </button>
 
       {isOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-base-100 rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b border-base-300 flex justify-between items-center bg-base-200">
+          <div className="bg-card text-card-foreground rounded-xl shadow-xl border border-border w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-border flex justify-between items-center bg-muted">
               <h3 className="font-bold text-lg flex items-center gap-2">
                 <Wand2 className="text-warning" size={20} /> AI Payment Reminder
               </h3>
-              <button onClick={() => setIsOpen(false)} className="btn btn-ghost btn-sm btn-circle">
+              <button onClick={() => setIsOpen(false)} className="rounded-full p-2 hover:bg-background">
                 <X size={20} />
               </button>
             </div>
 
             <div className="p-6 overflow-y-auto space-y-6">
               {isLoading ? (
-                <div className="flex flex-col items-center justify-center py-12 text-base-content/60">
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <Loader2 className="animate-spin mb-4" size={32} />
                   <p>Drafting personalized reminder...</p>
                 </div>
@@ -81,13 +81,13 @@ export default function ReminderModal({ customerName, invoiceId, amount, dueDate
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <label className="font-semibold text-sm">WhatsApp Message</label>
-                      <button onClick={() => handleCopy(whatsappBody, 'wa')} className="btn btn-ghost btn-xs gap-1">
+                      <button onClick={() => handleCopy(whatsappBody, 'wa')} className="inline-flex items-center gap-1 rounded-md p-1.5 text-xs hover:bg-muted">
                         {copiedWa ? <Check size={14} className="text-success" /> : <Copy size={14} />} 
                         {copiedWa ? "Copied" : "Copy"}
                       </button>
                     </div>
                     <textarea 
-                      className="textarea textarea-bordered w-full h-32" 
+                      className="w-full h-32 rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" 
                       value={whatsappBody}
                       onChange={(e) => setWhatsappBody(e.target.value)}
                     />
@@ -96,13 +96,13 @@ export default function ReminderModal({ customerName, invoiceId, amount, dueDate
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <label className="font-semibold text-sm">Email Template</label>
-                      <button onClick={() => handleCopy(emailBody, 'email')} className="btn btn-ghost btn-xs gap-1">
+                      <button onClick={() => handleCopy(emailBody, 'email')} className="inline-flex items-center gap-1 rounded-md p-1.5 text-xs hover:bg-muted">
                         {copiedEmail ? <Check size={14} className="text-success" /> : <Copy size={14} />} 
                         {copiedEmail ? "Copied" : "Copy"}
                       </button>
                     </div>
                     <textarea 
-                      className="textarea textarea-bordered w-full h-48" 
+                      className="w-full h-48 rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" 
                       value={emailBody}
                       onChange={(e) => setEmailBody(e.target.value)}
                     />
