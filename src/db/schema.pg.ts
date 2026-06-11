@@ -310,19 +310,24 @@ export const expenses = pgTable("expenses", {
 
 export const shiftHandovers = pgTable("shift_handovers", {
   id: serial("id").primaryKey(),
-  shiftDate: timestamp("shift_date", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  shiftDate: timestamp("shift_date", { withTimezone: true }).notNull().defaultNow(),
+  status: text("status").notNull().default("ACTIVE"),
+  startTime: timestamp("start_time", { withTimezone: true }).notNull().defaultNow(),
+  endTime: timestamp("end_time", { withTimezone: true }),
   startingCash: numeric("starting_cash", { precision: 12, scale: 2 }).notNull().default("0"),
+  
+  totalCashCollected: numeric("total_cash_collected", { precision: 12, scale: 2 }).notNull().default("0"),
+  digitalPaymentsCollected: numeric("digital_payments_collected", { precision: 12, scale: 2 }).notNull().default("0"),
+  udharIssued: numeric("udhar_issued", { precision: 12, scale: 2 }).notNull().default("0"),
+  expensesDuringShift: numeric("expenses_during_shift", { precision: 12, scale: 2 }).notNull().default("0"),
+  
   expectedEndingCash: numeric("expected_ending_cash", { precision: 12, scale: 2 }).notNull().default("0"),
   actualEndingCash: numeric("actual_ending_cash", { precision: 12, scale: 2 }).notNull().default("0"),
   discrepancy: numeric("discrepancy", { precision: 12, scale: 2 }).notNull().default("0"),
   notes: text("notes"),
   createdBy: integer("created_by").references(() => users.id),
   updatedBy: integer("updated_by").references(() => users.id),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const expensesRelations = relations(expenses, ({ one }) => ({

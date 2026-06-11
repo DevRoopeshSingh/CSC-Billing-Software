@@ -86,6 +86,7 @@ function SidebarNav() {
         { href: "/", label: "Dashboard", icon: LayoutDashboard },
         { href: "/billing/new", label: "New Invoice", icon: FilePlus },
         { href: "/invoices", label: "Invoices", icon: FileText },
+        { href: "/udhar", label: "Udhar", icon: BookOpen },
         { href: "/customers", label: "Customers", icon: Users },
         { href: "/services", label: "Services", icon: Briefcase },
       ],

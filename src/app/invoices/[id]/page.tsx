@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { ipc, IpcError, isBridgeAvailable } from "@/lib/ipc";
@@ -56,8 +56,15 @@ const STATUS_CLASSES: Record<InvoiceStatus, string> = {
 export default function InvoiceDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const canWrite = useCanWrite();
+
+  const returnTo = searchParams.get("returnTo");
+  const newParams = new URLSearchParams(searchParams.toString());
+  if (returnTo) newParams.delete("returnTo");
+  const qs = newParams.toString();
+  const backHref = returnTo ? `${returnTo}${qs ? `?${qs}` : ""}` : `/invoices${qs ? `?${qs}` : ""}`;
 
   const invoiceId = useMemo(() => {
     const n = Number(params?.id);
@@ -172,7 +179,7 @@ export default function InvoiceDetailPage() {
   const onPrint = async () => {
     if (!invoice?.id) return;
     if (!isBridgeAvailable()) {
-      window.open(API.INVOICE_PDF(invoice.id), "_blank");
+      window.open(`/print/${invoice.id}`, "_blank", "width=400,height=600");
       return;
     }
     setBusy("print");
@@ -284,7 +291,7 @@ export default function InvoiceDetailPage() {
           </p>
         </div>
         <Link
-          href="/invoices"
+          href={backHref}
           className={cn(
             "flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2",
             "text-sm font-medium text-foreground hover:bg-background"
@@ -312,7 +319,7 @@ export default function InvoiceDetailPage() {
       {/* ── Top toolbar (back / title block / status / actions) ──────── */}
       <div className="flex flex-wrap items-center gap-3">
         <Link
-          href="/invoices"
+          href={backHref}
           className={cn(
             actionBtn,
             "border-border bg-card text-muted-foreground hover:bg-background hover:text-foreground"
@@ -389,7 +396,8 @@ export default function InvoiceDetailPage() {
             ) : (
               <Download className="h-4 w-4" />
             )}
-            PDF
+            <span className="hidden sm:inline">Download A4 PDF</span>
+            <span className="sm:hidden">A4 PDF</span>
           </button>
 
           <button
@@ -406,7 +414,8 @@ export default function InvoiceDetailPage() {
             ) : (
               <Printer className="h-4 w-4" />
             )}
-            Print
+            <span className="hidden sm:inline">Print Thermal Receipt</span>
+            <span className="sm:hidden">Thermal</span>
           </button>
 
           {canWrite && (

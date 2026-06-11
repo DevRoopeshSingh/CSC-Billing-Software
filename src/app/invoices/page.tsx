@@ -1,7 +1,7 @@
 // src/app/invoices/page.tsx
 "use client";
 
-import { useState, useMemo, Suspense } from "react";
+import { useState, useMemo, Suspense, useEffect } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -28,6 +28,7 @@ import {
   Download,
   Archive,
   MessageCircle,
+  Printer,
 } from "lucide-react";
 import { useCanWrite } from "@/lib/permissions";
 
@@ -44,10 +45,39 @@ function InvoicesContent() {
   const customerIdFilter = searchParams.get("customerId");
 
   const [isExporting, setIsExporting] = useState(false);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<string>("ALL");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  
+  const qParam = searchParams.get("q") || "";
+  const statusParam = searchParams.get("status") || "ALL";
+  const fromParam = searchParams.get("from") || "";
+  const toParam = searchParams.get("to") || "";
+
+  const [search, setSearch] = useState(qParam);
+
+  useEffect(() => {
+    setSearch(qParam);
+  }, [qParam]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (search) params.set("q", search);
+      else params.delete("q");
+      if (params.toString() !== searchParams.toString()) {
+        router.replace(`/invoices?${params.toString()}`, { scroll: false });
+      }
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search, searchParams, router]);
+
+  const updateParam = (key: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value && value !== "ALL") params.set(key, value);
+    else params.delete(key);
+    router.replace(`/invoices?${params.toString()}`, { scroll: false });
+  };
+
+  const queryString = searchParams.toString();
+  const getDetailUrl = (id?: number) => `/invoices/${id}${queryString ? `?${queryString}` : ""}`;
 
   const { data: invoices = [], isLoading: loading, mutate: loadInvoices } = useSWR<InvoiceDetail[]>(
     API.INVOICES,
@@ -62,7 +92,7 @@ function InvoicesContent() {
     if (newStatus === "CANCELLED") {
       // Cancellation needs admin+PIN; route through the detail page so the
       // PIN modal flow stays in one place.
-      router.push(`/invoices/${id}`);
+      router.push(getDetailUrl(id));
       return;
     }
     try {
@@ -83,11 +113,11 @@ function InvoicesContent() {
     const q = search.trim().toLowerCase();
     return invoices.filter((inv) => {
       if (customerIdFilter && inv.customerId !== Number(customerIdFilter)) return false;
-      if (status !== "ALL" && inv.status !== status) return false;
-      if (startDate && inv.createdAt && new Date(inv.createdAt) < new Date(startDate))
+      if (statusParam !== "ALL" && inv.status !== statusParam) return false;
+      if (fromParam && inv.createdAt && new Date(inv.createdAt) < new Date(fromParam))
         return false;
-      if (endDate && inv.createdAt) {
-        const end = new Date(endDate);
+      if (toParam && inv.createdAt) {
+        const end = new Date(toParam);
         end.setHours(23, 59, 59, 999);
         if (new Date(inv.createdAt) > end) return false;
       }
@@ -98,9 +128,10 @@ function InvoicesContent() {
         (inv.customer?.mobile ?? "").toLowerCase().includes(q)
       );
     });
-  }, [invoices, search, status, startDate, endDate, customerIdFilter]);
+  }, [invoices, search, statusParam, fromParam, toParam, customerIdFilter]);
 
-  const totalAmount = filtered.reduce((s, inv) => s + inv.total, 0);
+  const isPendingFilter = statusParam === "PENDING";
+  const totalAmount = filtered.reduce((s, inv) => s + (isPendingFilter ? inv.balanceAmount : inv.total), 0);
   const paidCount = filtered.filter((i) => i.status === "PAID").length;
   const pendingCount = filtered.filter((i) => i.status === "PENDING").length;
 
@@ -244,7 +275,7 @@ function InvoicesContent() {
         <div className="grid grid-cols-3 gap-4">
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Total Amount
+              {isPendingFilter ? "Outstanding Balance" : "Total Amount"}
             </p>
             <p className="mt-1.5 text-xl font-bold text-foreground">
               {formatCurrency(totalAmount)}
@@ -292,8 +323,8 @@ function InvoicesContent() {
         </div>
         <div className="relative">
           <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            value={statusParam}
+            onChange={(e) => updateParam("status", e.target.value)}
             className={cn(
               "appearance-none rounded-lg border border-border bg-background py-2 pl-3 pr-8 text-sm",
               "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -310,8 +341,8 @@ function InvoicesContent() {
         <div className="flex items-center gap-2">
           <input
             type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            value={fromParam}
+            onChange={(e) => updateParam("from", e.target.value)}
             className={cn(
               "rounded-lg border border-border bg-background px-3 py-2 text-sm",
               "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -320,8 +351,8 @@ function InvoicesContent() {
           <span className="text-xs text-muted-foreground">to</span>
           <input
             type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            value={toParam}
+            onChange={(e) => updateParam("to", e.target.value)}
             className={cn(
               "rounded-lg border border-border bg-background px-3 py-2 text-sm",
               "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -429,14 +460,25 @@ function InvoicesContent() {
                         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" />
                       </div>
 
-                      <Link
-                        href={`/invoices/${inv.id}`}
-                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                        title="View"
-                      >
-                        <Eye className="h-4 w-4" />
-                        View
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          href={getDetailUrl(inv.id)}
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                          title="View"
+                        >
+                          <Eye className="h-4 w-4" />
+                          View
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => window.open(`/print/${inv.id}`, "_blank", "width=400,height=600")}
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                          title="Print Thermal Receipt"
+                        >
+                          <Printer className="h-4 w-4" />
+                          Print Thermal
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -548,12 +590,20 @@ function InvoicesContent() {
                     <td className="px-6 py-3.5">
                       <div className="flex items-center justify-center gap-1.5">
                         <Link
-                          href={`/invoices/${inv.id}`}
+                          href={getDetailUrl(inv.id)}
                           className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                           title="View"
                         >
                           <Eye className="h-4 w-4" />
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() => window.open(`/print/${inv.id}`, "_blank", "width=400,height=600")}
+                          className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                          title="Print Thermal Receipt"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/formatters";
-import BookmarkedServices from "@/components/BookmarkedServices";
+
 import type { Service, Customer } from "@/shared/types";
 import {
   UserCheck,
@@ -14,7 +14,42 @@ import {
   Printer,
   Trash2,
   AlertTriangle,
+  Star,
+  Building2,
+  Landmark,
+  GraduationCap,
+  HeartPulse,
+  Calculator,
+  Car,
+  Zap,
+  Plane,
 } from "lucide-react";
+
+const CATEGORY_ICONS: Record<string, any> = {
+  "Govt Services": Building2,
+  "Banking & Payments": Landmark,
+  Education: GraduationCap,
+  Healthcare: HeartPulse,
+  "Financial Services": Calculator,
+  "Auto & Insurance": Car,
+  "Utility Bills": Zap,
+  Travel: Plane,
+  Miscellaneous: FileText,
+  Other: FileText,
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  "Govt Services": "bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50",
+  "Banking & Payments": "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/50",
+  Education: "bg-violet-50 text-violet-600 border-violet-200 dark:bg-violet-950/30 dark:border-violet-900/50",
+  Healthcare: "bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/50",
+  "Financial Services": "bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50",
+  "Auto & Insurance": "bg-cyan-50 text-cyan-600 border-cyan-200 dark:bg-cyan-950/30 dark:border-cyan-900/50",
+  "Utility Bills": "bg-yellow-50 text-yellow-600 border-yellow-200 dark:bg-yellow-950/30 dark:border-yellow-900/50",
+  Travel: "bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-950/30 dark:border-indigo-900/50",
+  Miscellaneous: "bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800/50 dark:border-gray-800",
+  Other: "bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800/50 dark:border-gray-800",
+};
 import type { InvoiceState, LineItem } from "./useInvoiceState";
 import { createLineItem } from "./useInvoiceState";
 import OcrUpload from "@/components/invoices/OcrUpload";
@@ -52,7 +87,7 @@ interface InvoiceFormUIProps {
   customers: Customer[];
   customerSearch: string;
   setCustomerSearch: (q: string) => void;
-  onSubmit: (status: "PAID" | "PENDING") => void;
+  onSubmit: (status: "PAID" | "PENDING", printOnSave?: boolean) => void;
   onPreview?: () => void;
   actionLoading: "save" | "draft" | null;
 }
@@ -75,6 +110,7 @@ export function InvoiceFormUI({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [serviceSearchTerm, setServiceSearchTerm] = useState("");
   const [serviceSearchOpen, setServiceSearchOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string>("Bookmarked");
 
   const filteredServices = useMemo(() => {
     if (!serviceSearchTerm) return [];
@@ -96,6 +132,21 @@ export function InvoiceFormUI({
       ),
     [services]
   );
+
+  const categories = useMemo(() => {
+    const cats = Object.keys(grouped).filter(Boolean).sort();
+    return ["Bookmarked", "All", ...cats];
+  }, [grouped]);
+
+  const displayedServices = useMemo(() => {
+    if (activeCategory === "Bookmarked") {
+      return services.filter(s => s.isBookmarked);
+    }
+    if (activeCategory === "All") {
+      return services;
+    }
+    return grouped[activeCategory] || [];
+  }, [activeCategory, services, grouped]);
 
   const inputCls = cn(
     "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground",
@@ -126,7 +177,85 @@ export function InvoiceFormUI({
         </div>
       )}
 
-      <BookmarkedServices onSelect={(id) => actions.addServiceById(id, services)} />
+      {/* POS Quick Billing Mode */}
+      <div className="rounded-xl border border-border bg-card p-6 shadow-sm flex flex-col gap-5">
+        <div className="flex items-center gap-2">
+          <Star className="h-4 w-4 text-amber-500" />
+          <h3 className="text-sm font-bold uppercase tracking-wide text-foreground">
+            Quick Billing / POS Mode
+          </h3>
+        </div>
+        
+        {/* Category Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setActiveCategory(cat)}
+              className={cn(
+                "whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold transition-all",
+                activeCategory === cat
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground border border-transparent"
+              )}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Service Tile Grid */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 max-h-[350px] overflow-y-auto pr-2 pb-2">
+          {displayedServices.length === 0 ? (
+            <div className="col-span-full py-8 text-center text-sm text-muted-foreground">
+              No services found in "{activeCategory}".
+            </div>
+          ) : (
+            displayedServices.map((service) => {
+              const Icon = CATEGORY_ICONS[service.category || "Other"] ?? FileText;
+              const colorCls = CATEGORY_COLORS[service.category || "Other"] ?? CATEGORY_COLORS["Other"];
+
+              return (
+                <button
+                  key={service.id}
+                  type="button"
+                  onClick={() => actions.addServiceById(service.id!, services)}
+                  className={cn(
+                    "group relative flex h-full flex-col items-start gap-3 rounded-xl border p-3.5 text-left transition-all",
+                    "border-border bg-card hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5",
+                    "active:scale-[0.98]"
+                  )}
+                >
+                  <div className={cn("rounded-lg border p-2", colorCls)}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="w-full flex flex-col flex-1 justify-between">
+                    <div className="mb-2">
+                      <p className="text-[13px] font-bold text-foreground leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                        {service.name}
+                      </p>
+                      {service.category && activeCategory !== service.category && (
+                        <p className="mt-1 text-[9px] uppercase tracking-wider text-muted-foreground truncate">
+                          {service.category}
+                        </p>
+                      )}
+                    </div>
+                    <div className="mt-auto flex items-center justify-between">
+                      <span className="text-xs font-bold text-muted-foreground">
+                        {formatCurrency(service.defaultPrice || 0)}
+                      </span>
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary opacity-0 transition-all group-hover:opacity-100 group-hover:scale-110">
+                        <Plus className="h-3.5 w-3.5" />
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
 
       <div className="flex flex-col gap-4 mb-4">
         <OcrUpload
@@ -270,7 +399,13 @@ export function InvoiceFormUI({
                     type="button"
                     onMouseDown={() => {
                       actions.setNewCustomerMode(true);
-                      actions.setNewName(customerSearch);
+                      if (/^[\d\s\+\-]+$/.test(customerSearch) && customerSearch.replace(/\D/g, '').length >= 7) {
+                        actions.setNewMobile(customerSearch);
+                        actions.setNewName("");
+                      } else {
+                        actions.setNewName(customerSearch);
+                        actions.setNewMobile("");
+                      }
                       setDropdownOpen(false);
                     }}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-background"
@@ -771,28 +906,52 @@ export function InvoiceFormUI({
           </div>
 
           <div className="mt-6 flex flex-col gap-3">
-            <button
-              type="button"
-              disabled={actionLoading !== null}
-              onClick={() => {
-                const status = (state.advancePayment > 0 && state.advancePayment < totals.total) ? "PENDING" : "PAID";
-                onSubmit(status);
-              }}
-              className={cn(
-                "flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5",
-                "text-[15px] font-semibold text-white shadow-sm transition-all",
-                "hover:bg-primary-dark hover:shadow disabled:opacity-50"
-              )}
-            >
-              {actionLoading === "save" ? (
-                "Saving..."
-              ) : (
-                <>
-                  <Check className="h-5 w-5" />
-                  {mode === "edit" ? "Save Changes" : (state.advancePayment > 0 && state.advancePayment < totals.total ? "Save as PENDING (Partial)" : "Save as PAID")}
-                </>
-              )}
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={actionLoading !== null}
+                onClick={() => {
+                  const status = (state.advancePayment > 0 && state.advancePayment < totals.total) ? "PENDING" : "PAID";
+                  onSubmit(status);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-center gap-2 rounded-xl border border-primary text-primary bg-primary/10 py-3.5",
+                  "text-[15px] font-semibold shadow-sm transition-all hover:bg-primary hover:text-white",
+                  "disabled:opacity-50"
+                )}
+              >
+                {actionLoading === "save" ? (
+                  "Saving..."
+                ) : (
+                  <>
+                    <Check className="h-5 w-5" />
+                    {mode === "edit" ? "Save Changes" : (state.advancePayment > 0 && state.advancePayment < totals.total ? "Save Partial" : "Save Only")}
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading !== null}
+                onClick={() => {
+                  const status = (state.advancePayment > 0 && state.advancePayment < totals.total) ? "PENDING" : "PAID";
+                  onSubmit(status, true);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5",
+                  "text-[15px] font-semibold text-white shadow-sm transition-all",
+                  "hover:bg-primary-dark hover:shadow disabled:opacity-50"
+                )}
+              >
+                {actionLoading === "save" ? (
+                  "Saving..."
+                ) : (
+                  <>
+                    <Printer className="h-5 w-5" />
+                    {mode === "edit" ? "Save & Print" : "Save & Print"}
+                  </>
+                )}
+              </button>
+            </div>
             <div className={cn("grid gap-3", onPreview ? "grid-cols-2" : "grid-cols-1")}>
               <button
                 type="button"

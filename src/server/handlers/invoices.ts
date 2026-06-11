@@ -6,7 +6,7 @@
 // recomputed server-side from qty/rate/taxRate — never trusted from the
 // client.
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../db";
 import {
@@ -147,6 +147,20 @@ export async function getInvoice(
   };
 }
 
+export async function getUdharInvoices(): Promise<InvoiceDetailShape[]> {
+  const db = getDb();
+  const rows = await db.query.invoices.findMany({
+    where: and(gt(schema.invoices.balanceAmount, "0"), eq(schema.invoices.status, "PENDING")),
+    with: { customer: true, items: true },
+    orderBy: [desc(schema.invoices.createdAt)],
+  });
+  return rows.map((r) => ({
+    ...serializeInvoice(r),
+    customer: r.customer ?? null,
+    items: r.items.map(serializeItem),
+  }));
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function computeTotals(
@@ -181,10 +195,16 @@ function yyyymmdd(d: Date): string {
 export const createInvoiceInputSchema = createInvoiceSchema;
 export type CreateInvoiceInput = z.infer<typeof createInvoiceInputSchema>;
 
+import { getActiveShift } from "./shifts";
+
 export async function createInvoice(
   input: CreateInvoiceInput,
   userId: number
 ): Promise<{ id: number; invoiceNo: string }> {
+  const activeShift = await getActiveShift();
+  if (!activeShift) {
+    throw new Error("No active shift found. Please start a shift before creating an invoice.");
+  }
   const db = getDb();
   const result = await db.transaction(async (tx) => {
     // 1. Resolve customer (existing or create new).
@@ -238,8 +258,22 @@ export async function createInvoice(
       discount
     );
 
-    const advancePayment = Math.min(input.advancePayment ?? 0, total);
-    const balanceAmount = total - advancePayment;
+    let advancePayment = Math.min(input.advancePayment ?? 0, total);
+    let balanceAmount = total - advancePayment;
+
+    let invoiceStatus = input.status ?? "PAID";
+    
+    // Auto-correct status if fully paid
+    if (balanceAmount <= 0) {
+      advancePayment = total;
+      balanceAmount = 0;
+      invoiceStatus = "PAID";
+    }
+
+    if (invoiceStatus === "PAID") {
+      advancePayment = total;
+      balanceAmount = 0;
+    }
 
     // 4. Insert the invoice. Numeric columns are stringified to keep
     //    postgres-js from routing a JS Number through scientific notation.
@@ -255,7 +289,7 @@ export async function createInvoice(
         advancePayment: advancePayment.toFixed(2),
         balanceAmount: balanceAmount.toFixed(2),
         paymentMode: input.paymentMode ?? "Cash",
-        status: input.status ?? "PAID",
+        status: invoiceStatus,
         notes: input.notes ?? null,
         customerNotes: input.customerNotes ?? null,
         createdBy: userId,
@@ -399,8 +433,20 @@ export async function updateInvoice(
       discount
     );
 
-    const advancePayment = Math.min(input.advancePayment ?? 0, total);
-    const balanceAmount = total - advancePayment;
+    let advancePayment = Math.min(input.advancePayment ?? 0, total);
+    let balanceAmount = total - advancePayment;
+
+    let invoiceStatus = input.status ?? "PENDING";
+    if (balanceAmount <= 0) {
+      advancePayment = total;
+      balanceAmount = 0;
+      invoiceStatus = "PAID";
+    }
+
+    if (invoiceStatus === "PAID") {
+      advancePayment = total;
+      balanceAmount = 0;
+    }
 
     await tx
       .update(schema.invoices)
@@ -413,7 +459,7 @@ export async function updateInvoice(
         advancePayment: advancePayment.toFixed(2),
         balanceAmount: balanceAmount.toFixed(2),
         paymentMode: input.paymentMode ?? "Cash",
-        status: input.status ?? "PENDING",
+        status: invoiceStatus,
         notes: input.notes ?? null,
         customerNotes: input.customerNotes ?? null,
         // Edits invalidate any previously-printed copy; the user must
@@ -470,23 +516,49 @@ export async function setInvoiceStatus(
   userId: number
 ): Promise<InvoiceShape | null> {
   const db = getDb();
-  const [row] = await db
-    .update(schema.invoices)
-    .set({ status: input.status, updatedBy: userId })
-    .where(eq(schema.invoices.id, id))
-    .returning();
-    
-  if (row) {
-    await logAudit({
-      userId,
-      action: "UPDATE",
-      entityType: "INVOICE",
-      entityId: String(id),
-      details: { status: input.status, invoiceNo: row.invoiceNo },
-    });
-  }
+  
+  return await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(schema.invoices)
+      .where(eq(schema.invoices.id, id));
+      
+    if (!existing) return null;
 
-  return row ? serializeInvoice(row) : null;
+    if (input.status === "PAID" && existing.status !== "PAID" && Number(existing.balanceAmount) > 0) {
+      await tx.insert(schema.payments).values({
+        invoiceId: id,
+        amount: existing.balanceAmount,
+        paymentMode: existing.paymentMode || "Cash",
+        paymentDate: new Date(),
+        createdBy: userId,
+      });
+    }
+
+    const newBalance = input.status === "PAID" ? "0" : existing.balanceAmount;
+
+    const [row] = await tx
+      .update(schema.invoices)
+      .set({ 
+        status: input.status, 
+        balanceAmount: newBalance,
+        updatedBy: userId 
+      })
+      .where(eq(schema.invoices.id, id))
+      .returning();
+      
+    if (row) {
+      await logAudit({
+        userId,
+        action: "UPDATE",
+        entityType: "INVOICE",
+        entityId: String(id),
+        details: { status: input.status, invoiceNo: row.invoiceNo },
+      });
+    }
+
+    return row ? serializeInvoice(row) : null;
+  });
 }
 
 export async function cancelInvoice(
@@ -561,15 +633,45 @@ export async function bulkMarkPaid(
   userId: number
 ): Promise<BulkMarkPaidResult> {
   const db = getDb();
-  const rows = await db
-    .update(schema.invoices)
-    .set({ status: "PAID", paymentMode: input.paymentMode, updatedBy: userId })
-    .where(
-      and(
-        inArray(schema.invoices.id, input.ids),
-        eq(schema.invoices.status, "PENDING")
+  return await db.transaction(async (tx) => {
+    const pendingInvoices = await tx
+      .select()
+      .from(schema.invoices)
+      .where(
+        and(
+          inArray(schema.invoices.id, input.ids),
+          eq(schema.invoices.status, "PENDING")
+        )
+      );
+
+    if (pendingInvoices.length === 0) {
+      return { updated: 0 };
+    }
+
+    // Insert payments for the remaining balances
+    await tx.insert(schema.payments).values(
+      pendingInvoices.map((inv) => ({
+        invoiceId: inv.id,
+        amount: inv.balanceAmount,
+        paymentMode: input.paymentMode,
+        paymentDate: new Date(),
+        createdBy: userId,
+      }))
+    );
+
+    const rows = await tx
+      .update(schema.invoices)
+      .set({ 
+        status: "PAID", 
+        balanceAmount: "0", 
+        paymentMode: input.paymentMode, 
+        updatedBy: userId 
+      })
+      .where(
+        inArray(schema.invoices.id, pendingInvoices.map((i) => i.id))
       )
-    )
-    .returning({ id: schema.invoices.id });
-  return { updated: rows.length };
+      .returning({ id: schema.invoices.id });
+
+    return { updated: rows.length };
+  });
 }

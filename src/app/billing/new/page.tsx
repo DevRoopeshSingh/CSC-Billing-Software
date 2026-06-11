@@ -103,7 +103,7 @@ function NewInvoiceContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, services]);
 
-  const handleSubmit = async (status: "PAID" | "PENDING") => {
+  const handleSubmit = async (status: "PAID" | "PENDING", printOnSave = false) => {
     setActionLoading(status === "PAID" ? "save" : "draft");
     try {
       const payload = buildInvoicePayload(state, status);
@@ -112,9 +112,22 @@ function NewInvoiceContent() {
         payload
       );
       toast(`Invoice ${result.invoiceNo} created`, "success");
+      
+      if (printOnSave) {
+        if (!isBridgeAvailable()) {
+          window.open(`/print/${result.id}`, "_blank", "width=400,height=600");
+        } else {
+          ipc(IPC.PRINTER_PRINT_RECEIPT, result.id).catch(console.error);
+        }
+      }
+      
       router.push(`/invoices/${result.id}`);
     } catch (err) {
-      toast(err instanceof Error ? err.message : "Failed to create invoice", "error");
+      const msg = err instanceof Error ? err.message : "Failed to create invoice";
+      toast(msg, "error");
+      if (msg.includes("active shift")) {
+        router.push("/shifts");
+      }
     } finally {
       setActionLoading(null);
     }

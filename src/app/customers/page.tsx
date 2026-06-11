@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { api, ApiError } from "@/lib/api-client";
 import { API } from "@/lib/api-routes";
@@ -67,13 +68,34 @@ const fetcher = (url: string) => api.get<Customer[]>(url);
 
 export default function CustomersPage() {
   const { toast } = useToast();
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
+  const qParam = searchParams.get("q") || "";
+  const [search, setSearch] = useState(qParam);
+  const [debouncedSearch, setDebouncedSearch] = useState(qParam);
 
+  // Sync state from URL
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    setSearch(qParam);
+  }, [qParam]);
+
+  // Debounce search and sync to URL
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      const params = new URLSearchParams(searchParams.toString());
+      if (search) params.set("q", search);
+      else params.delete("q");
+      if (params.toString() !== searchParams.toString()) {
+        router.replace(`/customers?${params.toString()}`, { scroll: false });
+      }
+    }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, searchParams, router]);
+
+  const qs = searchParams.toString();
+  const getCustomerUrl = (id?: number) => `/customers/${id}${qs ? `?${qs}` : ""}`;
 
   const queryUrl = debouncedSearch
     ? `${API.CUSTOMERS_SEARCH}?q=${encodeURIComponent(debouncedSearch)}`
@@ -312,7 +334,7 @@ export default function CustomersPage() {
                         {canWrite && (
                           <>
                             <Link
-                              href={`/customers/${c.id}`}
+                              href={getCustomerUrl(c.id)}
                               className={cn(
                                 "inline-flex items-center gap-1 rounded-lg border border-border p-2",
                                 "text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
@@ -487,7 +509,7 @@ export default function CustomersPage() {
                         {canWrite && (
                           <>
                             <Link
-                              href={`/customers/${c.id}`}
+                              href={getCustomerUrl(c.id)}
                               className={cn(
                                 "inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5",
                                 "text-xs font-medium text-foreground transition-colors hover:bg-background"

@@ -2,7 +2,7 @@
 // Report handlers — direct port of the REPORTS_* safeHandle blocks from the
 // old Electron main process. Queries run against Postgres via Drizzle.
 
-import { and, eq, gte, lte, ne, sql, desc } from "drizzle-orm";
+import { and, eq, gte, lte, ne, sql, desc, gt } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../db";
 
@@ -17,7 +17,11 @@ export interface ReportSummary {
     revenue: number;
     grossCollection: number;
     governmentCharges: number;
+    expenses: number;
     netEarnings: number;
+    totalCashCollected: number;
+    udharIssued: number;
+    netProfit: number;
   };
   byStatus: Record<"PAID" | "PENDING" | "CANCELLED", { count: number; total: number }>;
   byPaymentMode: { paymentMode: string; count: number; total: number }[];
@@ -144,10 +148,74 @@ export async function getReportSummary(
     total: Number(row.total),
   }));
 
+  // 2. Cash Collected Today from Advance Payments (Invoices created today)
+  const advanceResult = await db
+    .select({
+      totalAdvance: sql<number>`coalesce(sum(${schema.invoices.advancePayment}), 0)::numeric`,
+    })
+    .from(schema.invoices)
+    .where(
+      and(
+        gte(schema.invoices.createdAt, startDate),
+        lte(schema.invoices.createdAt, endDate),
+        ne(schema.invoices.status, "CANCELLED")
+      )
+    );
+
+  // 3. Cash Collected Today from Subsequent Payments
+  const paymentsResult = await db
+    .select({
+      totalPayments: sql<number>`coalesce(sum(${schema.payments.amount}), 0)::numeric`,
+    })
+    .from(schema.payments)
+    .where(
+      and(
+        gte(schema.payments.paymentDate, startDate),
+        lte(schema.payments.paymentDate, endDate)
+      )
+    );
+
+  const paymentMethodsQuery = await db
+    .select({
+      paymentMode: schema.payments.paymentMode,
+      total: sql<number>`coalesce(sum(${schema.payments.amount}), 0)::numeric`,
+    })
+    .from(schema.payments)
+    .where(
+      and(
+        gte(schema.payments.paymentDate, startDate),
+        lte(schema.payments.paymentDate, endDate)
+      )
+    )
+    .groupBy(schema.payments.paymentMode);
+
+  // We should also include the payment modes from advance payments, but for simplicity we'll just use the old `byPaymentMode` logic or merge them.
+  // The user wants 'Today's Cash Collection'
+  
+  const expensesResult = await db
+    .select({
+      totalExpenses: sql<number>`coalesce(sum(${schema.expenses.amount}), 0)::numeric`,
+    })
+    .from(schema.expenses)
+    .where(
+      and(
+        gte(schema.expenses.expenseDate, startDate),
+        lte(schema.expenses.expenseDate, endDate)
+      )
+    );
+
   const row = result[0];
   const govCharge = Number(govChargeResult[0]?.totalGovCharge ?? 0);
-  const grossCollection = Number(row?.revenue ?? 0);
-  const netEarnings = grossCollection - govCharge;
+  const grossCollection = Number(row?.revenue ?? 0); // This is "Booked Sales"
+  const expenses = Number(expensesResult[0]?.totalExpenses ?? 0);
+  
+  const advanceCollected = Number(advanceResult[0]?.totalAdvance ?? 0);
+  const subsequentCollected = Number(paymentsResult[0]?.totalPayments ?? 0);
+  const totalCashCollected = advanceCollected + subsequentCollected;
+  
+  const netEarnings = grossCollection - govCharge; // Accrual net earnings
+  const netProfit = totalCashCollected - expenses; // Cash Net Position
+  const udharIssued = grossCollection - advanceCollected;
 
   return {
     totals: {
@@ -155,10 +223,14 @@ export async function getReportSummary(
       subtotal: Number(row?.subtotal ?? 0),
       taxTotal: Number(row?.taxTotal ?? 0),
       discount: Number(row?.discount ?? 0),
-      revenue: grossCollection, // kept for compatibility
+      revenue: grossCollection, // booked sales
       grossCollection,
       governmentCharges: govCharge,
-      netEarnings,
+      expenses,
+      netEarnings, // booked earnings
+      totalCashCollected,
+      udharIssued,
+      netProfit, // Cash position
     },
     byStatus,
     byPaymentMode,
@@ -174,10 +246,15 @@ export async function getPendingDues(): Promise<PendingDues> {
   const result = await db
     .select({
       count: sql<number>`count(*)::int`,
-      total: sql<number>`coalesce(sum(${schema.invoices.total}), 0)::numeric`,
+      total: sql<number>`coalesce(sum(${schema.invoices.balanceAmount}), 0)::numeric`,
     })
     .from(schema.invoices)
-    .where(eq(schema.invoices.status, "PENDING"));
+    .where(
+      and(
+        eq(schema.invoices.status, "PENDING"),
+        gt(schema.invoices.balanceAmount, "0")
+      )
+    );
 
   const row = result[0];
   return {

@@ -1,8 +1,8 @@
 import { withAuth, ANY_AUTHED, STAFF_PLUS } from "@/server/auth/with-auth";
 import {
   listShifts,
-  createShift,
-  shiftCreateSchema,
+  startShift,
+  shiftStartSchema,
 } from "@/server/handlers/shifts";
 
 export const GET = withAuth(
@@ -13,7 +13,7 @@ export const GET = withAuth(
 export const POST = withAuth(
   {
     access: { auth: "session", roles: STAFF_PLUS },
-    body: shiftCreateSchema,
+    body: shiftStartSchema,
   },
-  async ({ session, payload }) => createShift(payload, session!.userId)
+  async ({ session, payload }) => startShift(payload, session!.userId)
 );

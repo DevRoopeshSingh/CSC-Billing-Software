@@ -31,7 +31,11 @@ type ReportSummary = {
     revenue: number;
     grossCollection?: number;
     governmentCharges?: number;
+    expenses?: number;
     netEarnings?: number;
+    totalCashCollected?: number;
+    udharIssued?: number;
+    netProfit?: number;
   };
   byPaymentMode?: { paymentMode: string; count: number; total: number }[];
 };
@@ -145,7 +149,11 @@ export default function DashboardPage() {
   const [todayCount, setTodayCount] = useState(0);
   const [todayGrossCollection, setTodayGrossCollection] = useState(0);
   const [todayGovCharges, setTodayGovCharges] = useState(0);
-  const [todayNetEarnings, setTodayNetEarnings] = useState(0);
+  const [todayNetEarnings, setTodayNetEarnings] = useState(0); // This is booked sales
+  const [todayExpenses, setTodayExpenses] = useState(0);
+  const [todayNetProfit, setTodayNetProfit] = useState(0); // This is Net Cash Position
+  const [todayCashCollected, setTodayCashCollected] = useState(0);
+  const [todayUdharIssued, setTodayUdharIssued] = useState(0);
   const [pendingDues, setPendingDues] = useState<PendingDues>({
     count: 0,
     total: 0,
@@ -172,6 +180,10 @@ export default function DashboardPage() {
       setTodayGrossCollection(t?.grossCollection ?? 0);
       setTodayGovCharges(t?.governmentCharges ?? 0);
       setTodayNetEarnings(t?.netEarnings ?? 0);
+      setTodayExpenses(t?.expenses ?? 0);
+      setTodayCashCollected(t?.totalCashCollected ?? 0);
+      setTodayUdharIssued(t?.udharIssued ?? 0);
+      setTodayNetProfit(t?.netProfit ?? 0);
       setPendingDues(dues ?? { count: 0, total: 0 });
       setAvgInvoice(t && t.invoiceCount > 0 ? t.revenue / t.invoiceCount : 0);
       setPaymentModes(todaySummary?.byPaymentMode ?? []);
@@ -258,32 +270,48 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <Tile
-          label="Today's Invoices"
-          value={String(todayCount)}
+          label="Today's Cash Collection"
+          value={formatCurrency(todayCashCollected)}
           loading={loading}
-          sub="Excluding cancelled"
-          icon={Receipt}
-          accent="bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400"
-        />
-        <Tile
-          label="Today's Net Earnings"
-          value={formatCurrency(todayNetEarnings)}
-          loading={loading}
-          sub={`Gross: ${formatCurrency(todayGrossCollection)} | Govt: ${formatCurrency(todayGovCharges)}`}
+          sub={`Actual money received today`}
           icon={IndianRupee}
           accent="bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
         />
         <Tile
-          label="Avg Invoice (today)"
-          value={formatCurrency(avgInvoice)}
+          label="Net Cash Position"
+          value={formatCurrency(todayNetProfit)}
           loading={loading}
+          sub={`Collection: ${formatCurrency(todayCashCollected)} | Expenses: ${formatCurrency(todayExpenses)}`}
           icon={Wallet}
+          accent="bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400"
+        />
+        <Tile
+          label="Today's Expenses"
+          value={formatCurrency(todayExpenses)}
+          loading={loading}
+          icon={Receipt}
+          accent="bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400"
+        />
+        <Tile
+          label="Sales Booked Today"
+          value={formatCurrency(todayGrossCollection)}
+          loading={loading}
+          sub={`${todayCount} invoices (Accrual)`}
+          icon={BarChart3}
           accent="bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
         />
         <Tile
-          label="Pending Dues"
+          label="Udhar Issued Today"
+          value={formatCurrency(todayUdharIssued)}
+          loading={loading}
+          sub="New credit given today"
+          icon={FileWarning}
+          accent="bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+        />
+        <Tile
+          label="Total Pending Dues"
           value={formatCurrency(pendingDues.total)}
           loading={loading}
           sub={`${pendingDues.count} open · all-time`}

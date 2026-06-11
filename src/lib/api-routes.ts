@@ -43,6 +43,7 @@ export const API = {
   REPORTS_REVENUE_TRENDS: "/api/reports/revenue-trends",
   REPORTS_RANGE: "/api/reports/range",
   REPORTS_TALLY_EXPORT: "/api/reports/tally-export",
+  REPORTS_UDHAR: "/api/reports/udhar",
 
   USERS: "/api/users",
   USER: (id: number) => `/api/users/${id}`,
