@@ -91,7 +91,7 @@ export function ServicesTable({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 rounded-lg bg-background p-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-lg bg-background p-3">
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Price</p>
                   <div className="flex items-center gap-1">

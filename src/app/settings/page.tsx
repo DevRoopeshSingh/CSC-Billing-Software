@@ -653,7 +653,7 @@ export default function SettingsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <FieldLabel>Mobile / Phone</FieldLabel>
               <input
@@ -676,7 +676,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <FieldLabel hint="optional">Udyam Registration No.</FieldLabel>
               <input
@@ -857,7 +857,7 @@ export default function SettingsPage() {
 
           {form.smsEnabled && (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <FieldLabel required>SMS Provider</FieldLabel>
                   <select
@@ -881,7 +881,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <FieldLabel required hint="e.g. FSTSMS">Sender ID</FieldLabel>
                   <input
@@ -916,7 +916,7 @@ export default function SettingsPage() {
         title="Admin PIN"
         subtitle="Required to authorize destructive operations (delete, cancel, branding upload)"
       >
-        <div className="grid grid-cols-2 gap-4 max-w-xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
           {hasPin && (
             <div>
               <FieldLabel required>Current PIN</FieldLabel>
@@ -979,7 +979,7 @@ export default function SettingsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <FieldLabel required hint="IP or USB">
                   Printer Interface

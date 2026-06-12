@@ -450,7 +450,7 @@ export function InvoiceFormUI({
             )}
           </div>
         ) : (
-          <div className="grid max-w-lg grid-cols-2 gap-4">
+          <div className="grid max-w-lg grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-foreground">
                 Name *
@@ -906,7 +906,7 @@ export function InvoiceFormUI({
           </div>
 
           <div className="mt-6 flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
                 disabled={actionLoading !== null}
@@ -952,7 +952,7 @@ export function InvoiceFormUI({
                 )}
               </button>
             </div>
-            <div className={cn("grid gap-3", onPreview ? "grid-cols-2" : "grid-cols-1")}>
+            <div className={cn("grid gap-3", onPreview ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1")}>
               <button
                 type="button"
                 disabled={actionLoading !== null}

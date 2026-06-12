@@ -332,7 +332,7 @@ export default function ShiftsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
                     <div className="rounded border border-border p-3">
                         <p className="text-xs text-muted-foreground uppercase">Digital Received</p>
                         <p className="font-medium">₹{shiftMath.digitalPaymentsCollected.toFixed(2)}</p>

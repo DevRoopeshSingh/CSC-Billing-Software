@@ -585,7 +585,7 @@ export default function CustomersPage() {
             </div>
             <form onSubmit={handleSubmit}>
               <div className="space-y-4 px-6 py-5">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold text-foreground">
                       Name *
@@ -656,7 +656,7 @@ export default function CustomersPage() {
                     )}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold text-foreground">
                       Tags
@@ -692,7 +692,7 @@ export default function CustomersPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold text-foreground">
                       Aadhaar Number

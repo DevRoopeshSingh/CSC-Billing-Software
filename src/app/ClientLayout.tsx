@@ -342,21 +342,21 @@ function TopBar() {
         "bg-surface [-webkit-app-region:drag]"
       )}
     >
-      <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
+      <div className="flex flex-1 items-center gap-3 min-w-0 [-webkit-app-region:no-drag]">
         <button
           onClick={toggleSidebar}
-          className="mr-2 rounded p-2 hover:bg-muted text-muted-foreground transition-colors"
+          className="mr-2 shrink-0 rounded p-2 hover:bg-muted text-muted-foreground transition-colors"
           title="Toggle Sidebar (Ctrl+B)"
         >
           <Menu className="h-5 w-5" />
         </button>
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">{pageTitle}</h1>
-          <p className="text-xs text-muted-foreground">{dateStr}</p>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg font-semibold text-foreground truncate">{pageTitle}</h1>
+          <p className="text-xs text-muted-foreground truncate">{dateStr}</p>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
+      <div className="flex items-center gap-1.5 md:gap-3 shrink-0 [-webkit-app-region:no-drag]">
         {/* Search */}
         <button
           className={cn(

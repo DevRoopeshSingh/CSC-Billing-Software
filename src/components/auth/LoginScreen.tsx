@@ -60,7 +60,7 @@ export function LoginScreen() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background/50 py-2.5 pl-10 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary backdrop-blur-sm transition-all"
+                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
                   placeholder="Enter username" autoFocus
                   required
                 />
@@ -74,7 +74,7 @@ export function LoginScreen() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background/50 py-2.5 pl-10 pr-10 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary backdrop-blur-sm transition-all"
+                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-10 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
                   placeholder="Enter password"
                   required
                 />
@@ -204,7 +204,7 @@ function ResetPasswordModal({
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
               placeholder="e.g. admin"
               required
               autoFocus={!initialUsername}
@@ -216,7 +216,7 @@ function ResetPasswordModal({
               type="password"
               value={adminPin}
               onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm tracking-widest focus:border-primary focus:outline-none"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm tracking-widest text-foreground focus:border-primary focus:outline-none"
               placeholder="••••"
               required
               minLength={4}
@@ -228,7 +228,7 @@ function ResetPasswordModal({
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
               placeholder="At least 6 characters"
               required
               minLength={6}
@@ -240,7 +240,7 @@ function ResetPasswordModal({
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
               placeholder="Re-enter new password"
               required
             />
