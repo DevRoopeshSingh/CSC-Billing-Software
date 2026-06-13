@@ -228,7 +228,8 @@ export async function generateInvoicePdfBytes(
   const line = rgb(0.85, 0.87, 0.9);
   const stripe = rgb(0.96, 0.97, 0.98);
 
-  const logoImg = await tryEmbedImage(doc, center?.logoFile);
+  const defaultLogoPath = path.join(process.cwd(), "public", "uploads", "SarathiDigitalBlackBackground.png");
+  const logoImg = await tryEmbedImage(doc, center?.logoFile || defaultLogoPath);
   const upiQrImg = await tryEmbedImage(doc, center?.upiQrFile);
 
   // ── Header ──────────────────────────────────────────────────────────────

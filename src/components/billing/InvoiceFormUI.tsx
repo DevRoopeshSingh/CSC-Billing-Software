@@ -399,7 +399,7 @@ export function InvoiceFormUI({
                     type="button"
                     onMouseDown={() => {
                       actions.setNewCustomerMode(true);
-                      if (/^[\d\s\+\-]+$/.test(customerSearch) && customerSearch.replace(/\D/g, '').length >= 7) {
+                      if (/^[\d\s+-]+$/.test(customerSearch) && customerSearch.replace(/\D/g, '').length >= 7) {
                         actions.setNewMobile(customerSearch);
                         actions.setNewName("");
                       } else {

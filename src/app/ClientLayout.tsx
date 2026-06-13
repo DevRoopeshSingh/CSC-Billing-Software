@@ -144,9 +144,16 @@ function SidebarNav() {
         {/* Brand */}
         <div className="flex h-16 shrink-0 items-center border-b border-white/10 px-5">
           <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-white font-bold">
-              C
-            </div>
+            <img 
+              src="/api/center/branding/logo" 
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.onerror = null;
+                target.src = "/uploads/SarathiDigitalBlackBackground.png";
+              }}
+              alt="App Logo" 
+              className="h-8 w-8 shrink-0 rounded-lg object-cover bg-white"
+            />
             <div
               className={cn(
                 "transition-all duration-300",
