@@ -149,7 +149,7 @@ function SidebarNav() {
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.onerror = null;
-                target.src = "/uploads/SarathiDigitalBlackBackground.png";
+                target.src = "/SarathiDigitalBlackBackground.png";
               }}
               alt="App Logo" 
               className="h-8 w-8 shrink-0 rounded-lg object-cover bg-white"
