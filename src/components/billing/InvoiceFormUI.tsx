@@ -53,7 +53,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 import type { InvoiceState, LineItem } from "./useInvoiceState";
 import { createLineItem } from "./useInvoiceState";
 import OcrUpload from "@/components/invoices/OcrUpload";
-import ServiceSuggestions from "@/components/invoices/ServiceSuggestions";
 import VoiceMic from "@/components/invoices/VoiceMic";
 
 interface InvoiceFormUIProps {
@@ -366,26 +365,6 @@ export function InvoiceFormUI({
                 {state.selectedCustomer.mobile && ` — ${state.selectedCustomer.mobile}`}
               </div>
             )}
-            
-            {state.selectedCustomer && (
-              <div className="mt-3">
-                <ServiceSuggestions
-                  customerId={state.selectedCustomer.id?.toString() || ""}
-                  pastServices={state.lineItems.map(item => item.description).filter(Boolean)}
-                  onSelectService={(serviceName) => {
-                    const matched = services.find(s => s.name === serviceName);
-                    if (matched && matched.id) {
-                      actions.addServiceById(matched.id, services);
-                    } else {
-                      actions.setLineItems((prev) => {
-                        const validPrev = prev.filter(p => p.description || p.rate || p.serviceId);
-                        return [...validPrev, { ...createLineItem(), description: serviceName }];
-                      });
-                    }
-                  }}
-                />
-              </div>
-            )}
 
             {dropdownOpen && !state.selectedCustomer && (
               <div
@@ -552,7 +531,144 @@ export function InvoiceFormUI({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="block md:hidden border-t border-border mt-4">
+          <div className="flex flex-col divide-y divide-border/50">
+            {state.lineItems.map((row) => {
+              const lineBase = row.qty * row.rate;
+              const govBase = row.qty * (row.govCharge || 0);
+              const lineTax = lineBase * (row.taxRate / 100);
+              const lineTotal = lineBase + govBase + lineTax;
+
+              return (
+                <div key={row._key} className="flex flex-col gap-3 p-4">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex-1 space-y-2">
+                      <select
+                        value={row.serviceId || ""}
+                        onChange={(e) =>
+                          actions.handleServiceSelect(row._key, Number(e.target.value), services)
+                        }
+                        className={cn(
+                          tableInputCls,
+                          "w-full rounded-lg border border-border bg-card px-2 py-2"
+                        )}
+                      >
+                        <option value="">-- Select Service --</option>
+                        {Object.entries(grouped).map(([category, svcs]) => (
+                          <optgroup key={category} label={category}>
+                            {svcs.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={row.description}
+                        onChange={(e) =>
+                          actions.updateRow(row._key, { description: e.target.value })
+                        }
+                        placeholder="Description (Optional)"
+                        className={cn(
+                          tableInputCls,
+                          "w-full rounded-lg border border-border bg-card px-2 py-1.5 focus:border-primary"
+                        )}
+                      />
+                    </div>
+                    {state.lineItems.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => actions.removeRow(row._key)}
+                        className="rounded-lg p-2 text-muted-foreground hover:bg-red-50 hover:text-red-600 border border-transparent hover:border-red-200"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Qty</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={row.qty}
+                        onChange={(e) =>
+                          actions.updateRow(row._key, { qty: Number(e.target.value) })
+                        }
+                        className={cn(
+                          tableInputCls,
+                          "w-full rounded-lg border border-border bg-card px-2 py-1.5 focus:border-primary"
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Rate</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.rate}
+                        onChange={(e) =>
+                          actions.updateRow(row._key, { rate: Number(e.target.value) })
+                        }
+                        className={cn(
+                          tableInputCls,
+                          "w-full rounded-lg border border-border bg-card px-2 py-1.5 focus:border-primary"
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Govt Charge</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.govCharge || 0}
+                        onChange={(e) =>
+                          actions.updateRow(row._key, { govCharge: Number(e.target.value) })
+                        }
+                        className={cn(
+                          tableInputCls,
+                          "w-full rounded-lg border border-border bg-card px-2 py-1.5 focus:border-primary"
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase tracking-wide text-muted-foreground">{state.intraState ? "CGST+SGST %" : "IGST %"}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={row.taxRate}
+                        onChange={(e) =>
+                          actions.updateRow(row._key, {
+                            taxRate: Number(e.target.value),
+                          })
+                        }
+                        className={cn(
+                          tableInputCls,
+                          "w-full rounded-lg border border-border bg-card px-2 py-1.5 focus:border-primary"
+                        )}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center mt-2 border-t border-border/50 pt-3">
+                    <span className="text-sm font-semibold text-foreground">Total</span>
+                    <span className="font-bold text-primary">₹{lineTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left">

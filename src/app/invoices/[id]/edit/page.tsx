@@ -36,6 +36,7 @@ function EditInvoiceForm({
     selectedCustomer: invoice.customer ?? null,
     newCustomerMode: false,
     discount: invoice.discount,
+    advancePayment: invoice.advancePayment,
     notes: invoice.notes ?? "",
     customerNotes: invoice.customerNotes ?? "",
     paymentMode: invoice.paymentMode,

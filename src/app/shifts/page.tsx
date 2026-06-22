@@ -185,8 +185,75 @@ export default function ShiftsPage() {
         </div>
       )}
 
-      {/* History Table View */}
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-4">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground">
+            <Loader2 className="mx-auto h-6 w-6 animate-spin mb-2" />
+            Loading...
+          </div>
+        ) : shifts.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground rounded-xl border border-border bg-card shadow-sm">
+            <History className="mx-auto h-8 w-8 mb-3 opacity-20" />
+            No shift handovers recorded yet.
+          </div>
+        ) : (
+          shifts.map((shift) => (
+            <div key={shift.id} className={cn(
+              "rounded-xl border border-border bg-card p-4 shadow-sm flex flex-col gap-3",
+              shift.status === "ACTIVE" && "border-primary/50 bg-primary/5"
+            )}>
+              <div className="flex items-center justify-between border-b border-border/50 pb-2">
+                <div>
+                  <div className="font-medium text-foreground">
+                    {new Date(shift.startTime).toLocaleDateString()}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(shift.startTime).toLocaleTimeString()} - {shift.endTime ? new Date(shift.endTime).toLocaleTimeString() : 'Active'}
+                  </div>
+                </div>
+                <div className="text-right">
+                  {shift.status === "ACTIVE" ? (
+                    <span className="text-xs font-medium text-primary">In Progress</span>
+                  ) : shift.discrepancy === 0 ? (
+                    <span className="text-green-600 dark:text-green-400 font-medium text-xs bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded-full">Match</span>
+                  ) : (
+                    <span className={cn(
+                      "font-medium text-xs px-2 py-1 rounded-full",
+                      shift.discrepancy > 0 
+                        ? "text-blue-600 bg-blue-100 dark:text-blue-400 dark:bg-blue-900/30" 
+                        : "text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-900/30"
+                    )}>
+                      {shift.discrepancy > 0 ? "+" : ""}₹{shift.discrepancy.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground text-xs uppercase">Opening:</span>
+                  <span className="font-medium">₹{shift.startingCash.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground text-xs uppercase">Cash In:</span>
+                  <span className="font-medium text-green-600">+₹{shift.totalCashCollected.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground text-xs uppercase">Digital:</span>
+                  <span className="font-medium">₹{shift.digitalPaymentsCollected.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground text-xs uppercase">Expenses:</span>
+                  <span className="font-medium text-red-500">-₹{shift.expensesDuringShift.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Desktop History Table View */}
+      <div className="hidden md:block rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="border-b border-border bg-muted/50 text-xs text-muted-foreground">
             <tr>

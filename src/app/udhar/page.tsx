@@ -228,7 +228,87 @@ function UdharContent() {
             <p className="text-sm text-muted-foreground">No outstanding invoices found</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Mobile Card View */}
+            <div className="block md:hidden">
+              <div className="flex flex-col divide-y divide-border/50">
+                {filteredAndSorted.map((inv) => {
+                  const agingDays = getAgingDays(inv.createdAt);
+                  return (
+                    <div key={inv.id} className="flex flex-col gap-3 p-4 hover:bg-muted/20 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <Link href={getInvoiceUrl(inv.id)} className="font-semibold text-primary hover:underline">
+                            {inv.invoiceNo}
+                          </Link>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {inv.createdAt ? formatDate(inv.createdAt) : "—"}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold text-red-600 dark:text-red-400 text-base">
+                            {formatCurrency(inv.balanceAmount)}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5">
+                            of {formatCurrency(inv.total)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {inv.customer?.name ?? "—"}
+                        </p>
+                        {inv.customer?.mobile && (
+                          <div className="mt-1 flex items-center justify-between">
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Phone className="h-3 w-3" />
+                              {inv.customer.mobile}
+                            </span>
+                            <a
+                              href={`https://wa.me/91${inv.customer.mobile.replace(/\D/g, '')}?text=Hi%20${encodeURIComponent(inv.customer.name)},%20Your%20invoice%20${inv.invoiceNo}%20has%20a%20pending%20balance%20of%20${formatCurrency(inv.balanceAmount)}.`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center rounded-full bg-emerald-50 p-1.5 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                              title="Remind on WhatsApp"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                              <span className="ml-1 text-xs font-medium pr-1">Remind</span>
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between mt-1 pt-3 border-t border-border/50">
+                        <span className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
+                          getAgingColor(agingDays)
+                        )}>
+                          <Clock className="h-3.5 w-3.5" />
+                          {agingDays} Days
+                        </span>
+                        
+                        {canWrite && (
+                          <button
+                            onClick={() => {
+                              setPaymentModalData(inv);
+                              setPaymentAmount(inv.balanceAmount.toString());
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm transition-all hover:bg-primary-dark active:scale-95"
+                          >
+                            <DollarSign className="h-4 w-4" />
+                            Receive
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/30 text-left">
@@ -336,6 +416,7 @@ function UdharContent() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
