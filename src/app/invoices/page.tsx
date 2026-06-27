@@ -117,10 +117,10 @@ function InvoicesContent() {
       if (customerIdFilter && inv.customerId !== Number(customerIdFilter)) return false;
       if (statusParam !== "ALL" && inv.status !== statusParam) return false;
       if (paymentParam !== "ALL" && inv.paymentMode !== paymentParam) return false;
-      if (fromParam && inv.createdAt && new Date(inv.createdAt) < new Date(fromParam))
+      if (fromParam && inv.createdAt && new Date(inv.createdAt) < new Date(fromParam + "T00:00:00"))
         return false;
       if (toParam && inv.createdAt) {
-        const end = new Date(toParam);
+        const end = new Date(toParam + "T00:00:00");
         end.setHours(23, 59, 59, 999);
         if (new Date(inv.createdAt) > end) return false;
       }
@@ -286,22 +286,26 @@ function InvoicesContent() {
               {formatCurrency(totalAmount)}
             </p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Cash Total
-            </p>
-            <p className="mt-1.5 text-xl font-bold text-foreground">
-              {formatCurrency(cashTotal)}
-            </p>
-          </div>
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              UPI Total
-            </p>
-            <p className="mt-1.5 text-xl font-bold text-foreground">
-              {formatCurrency(upiTotal)}
-            </p>
-          </div>
+          {(paymentParam === "ALL" || paymentParam === "Cash") && (
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {isPendingFilter ? "Exp. Cash" : "Cash Total"}
+              </p>
+              <p className="mt-1.5 text-xl font-bold text-foreground">
+                {formatCurrency(cashTotal)}
+              </p>
+            </div>
+          )}
+          {(paymentParam === "ALL" || paymentParam === "UPI") && (
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {isPendingFilter ? "Exp. UPI" : "UPI Total"}
+              </p>
+              <p className="mt-1.5 text-xl font-bold text-foreground">
+                {formatCurrency(upiTotal)}
+              </p>
+            </div>
+          )}
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Paid
