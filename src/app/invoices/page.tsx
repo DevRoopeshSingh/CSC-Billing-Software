@@ -33,6 +33,7 @@ import {
 import { useCanWrite } from "@/lib/permissions";
 
 const STATUS_OPTIONS = ["ALL", "PAID", "PENDING", "CANCELLED"] as const;
+const PAYMENT_OPTIONS = ["ALL", "Cash", "UPI", "Card", "Other"] as const;
 
 const fetcher = (url: string) => api.get<InvoiceDetail[]>(url);
 
@@ -48,6 +49,7 @@ function InvoicesContent() {
   
   const qParam = searchParams.get("q") || "";
   const statusParam = searchParams.get("status") || "ALL";
+  const paymentParam = searchParams.get("payment") || "ALL";
   const fromParam = searchParams.get("from") || "";
   const toParam = searchParams.get("to") || "";
 
@@ -114,6 +116,7 @@ function InvoicesContent() {
     return invoices.filter((inv) => {
       if (customerIdFilter && inv.customerId !== Number(customerIdFilter)) return false;
       if (statusParam !== "ALL" && inv.status !== statusParam) return false;
+      if (paymentParam !== "ALL" && inv.paymentMode !== paymentParam) return false;
       if (fromParam && inv.createdAt && new Date(inv.createdAt) < new Date(fromParam))
         return false;
       if (toParam && inv.createdAt) {
@@ -128,10 +131,12 @@ function InvoicesContent() {
         (inv.customer?.mobile ?? "").toLowerCase().includes(q)
       );
     });
-  }, [invoices, search, statusParam, fromParam, toParam, customerIdFilter]);
+  }, [invoices, search, statusParam, paymentParam, fromParam, toParam, customerIdFilter]);
 
   const isPendingFilter = statusParam === "PENDING";
   const totalAmount = filtered.reduce((s, inv) => s + (isPendingFilter ? inv.balanceAmount : inv.total), 0);
+  const cashTotal = filtered.filter(i => i.paymentMode === "Cash").reduce((s, inv) => s + (isPendingFilter ? inv.balanceAmount : inv.total), 0);
+  const upiTotal = filtered.filter(i => i.paymentMode === "UPI").reduce((s, inv) => s + (isPendingFilter ? inv.balanceAmount : inv.total), 0);
   const paidCount = filtered.filter((i) => i.status === "PAID").length;
   const pendingCount = filtered.filter((i) => i.status === "PENDING").length;
 
@@ -272,13 +277,29 @@ function InvoicesContent() {
       </div>
 
       {!loading && filtered.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {isPendingFilter ? "Outstanding Balance" : "Total Amount"}
             </p>
             <p className="mt-1.5 text-xl font-bold text-foreground">
               {formatCurrency(totalAmount)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Cash Total
+            </p>
+            <p className="mt-1.5 text-xl font-bold text-foreground">
+              {formatCurrency(cashTotal)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              UPI Total
+            </p>
+            <p className="mt-1.5 text-xl font-bold text-foreground">
+              {formatCurrency(upiTotal)}
             </p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -333,6 +354,23 @@ function InvoicesContent() {
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
                 {s === "ALL" ? "All Statuses" : s}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        </div>
+        <div className="relative">
+          <select
+            value={paymentParam}
+            onChange={(e) => updateParam("payment", e.target.value)}
+            className={cn(
+              "appearance-none rounded-lg border border-border bg-background py-2 pl-3 pr-8 text-sm",
+              "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            )}
+          >
+            {PAYMENT_OPTIONS.map((p) => (
+              <option key={p} value={p}>
+                {p === "ALL" ? "All Payments" : p}
               </option>
             ))}
           </select>
