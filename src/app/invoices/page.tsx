@@ -306,22 +306,26 @@ function InvoicesContent() {
               </p>
             </div>
           )}
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Paid
-            </p>
-            <p className="mt-1.5 text-xl font-bold text-emerald-600">
-              {paidCount}
-            </p>
-          </div>
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Pending
-            </p>
-            <p className="mt-1.5 text-xl font-bold text-amber-600">
-              {pendingCount}
-            </p>
-          </div>
+          {(statusParam === "ALL" || statusParam === "PAID") && (
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Paid
+              </p>
+              <p className="mt-1.5 text-xl font-bold text-emerald-600">
+                {paidCount}
+              </p>
+            </div>
+          )}
+          {(statusParam === "ALL" || statusParam === "PENDING") && (
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Pending
+              </p>
+              <p className="mt-1.5 text-xl font-bold text-amber-600">
+                {pendingCount}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -387,7 +391,8 @@ function InvoicesContent() {
             onChange={(e) => updateParam("from", e.target.value)}
             className={cn(
               "rounded-lg border border-border bg-background px-3 py-2 text-sm",
-              "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
+              "dark:[color-scheme:dark]"
             )}
           />
           <span className="text-xs text-muted-foreground">to</span>
@@ -397,7 +402,8 @@ function InvoicesContent() {
             onChange={(e) => updateParam("to", e.target.value)}
             className={cn(
               "rounded-lg border border-border bg-background px-3 py-2 text-sm",
-              "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
+              "dark:[color-scheme:dark]"
             )}
           />
         </div>
